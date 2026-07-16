@@ -49,6 +49,7 @@ async function getDB() {
             if (!dbCache.transactions) dbCache.transactions = [];
             if (!dbCache.friends) dbCache.friends = [];
             if (!dbCache.dailyRewards) dbCache.dailyRewards = [];
+            if (!dbCache.coinflip) dbCache.coinflip = { queue: [], active: {} };
             return dbCache;
         }
     } catch (error) {
@@ -342,6 +343,7 @@ async function handleRegister(e) {
     if (!db.transactions) db.transactions = [];
     if (!db.friends) db.friends = [];
     if (!db.dailyRewards) db.dailyRewards = [];
+    if (!db.coinflip) db.coinflip = { queue: [], active: {} };
     
     // Add welcome bonus transaction
     db.transactions.push({
@@ -436,6 +438,12 @@ function updateUI() {
 }
 
 function switchTab(tab) {
+    // Stop coinflip polling when leaving
+    if (coinflipPollInterval) {
+        clearInterval(coinflipPollInterval);
+        coinflipPollInterval = null;
+    }
+    
     document.querySelectorAll('.nav-item').forEach(item => {
         item.classList.remove('active');
         if (item.dataset.tab === tab) item.classList.add('active');
@@ -449,6 +457,7 @@ function switchTab(tab) {
     if (tab === 'history') loadHistory();
     if (tab === 'admin') loadAdminData();
     if (tab === 'feed') loadFeed();
+    if (tab === 'coinflip') loadCoinFlip();
 }
 
 // ==================== SEND CREDITS ====================
@@ -785,6 +794,20 @@ async function loadHistory() {
     });
 }
 
+// ==================== BAD WORD FILTER ====================
+const badWords = ['fuck', 'shit', 'ass', 'bitch', 'damn', 'crap', 'dick', 'cock', 'pussy', 'asshole', 'bastard', 'slut', 'whore', 'nigger', 'fag', 'retard', 'cunt'];
+
+function containsBadWords(text) {
+    const lower = text.toLowerCase();
+    const found = [];
+    for (const word of badWords) {
+        if (lower.includes(word)) {
+            found.push(word);
+        }
+    }
+    return found;
+}
+
 // ==================== FEED / POSTS ====================
 let currentModalPostId = null;
 
@@ -841,6 +864,13 @@ async function createPost() {
     if (content.length > 500) {
         showToast('Post too long! Max 500 characters.', 'error');
         return;
+    }
+    
+    // Bad word check
+    const badFound = containsBadWords(content);
+    if (badFound.length > 0) {
+        const proceed = confirm(`⚠️ Warning: Your post may contain inappropriate language (${badFound.join(', ')}).\n\nDo you still want to post it?`);
+        if (!proceed) return;
     }
     
     const token = getGithubToken();
@@ -1277,6 +1307,311 @@ async function promptAdmin() {
         updateUI();
         showToast('Admin mode activated!', 'success');
     }
+}
+
+// ==================== COIN FLIP ====================
+// Multiplayer coin flip game using GitHub database as shared state
+// Players join a queue, get matched, set a bet, and flip a coin.
+// Winner takes both bets (net gain = opponent's bet amount).
+
+let coinflipPollInterval = null;
+
+async function loadCoinFlip() {
+    if (!currentUser) return;
+    resetCoinFlipUI();
+    await checkCoinFlipQueue();
+    // Poll every 2 seconds for matches
+    if (coinflipPollInterval) clearInterval(coinflipPollInterval);
+    coinflipPollInterval = setInterval(checkCoinFlipQueue, 2000);
+}
+
+function resetCoinFlipUI() {
+    document.getElementById('coinflip-waiting').classList.add('active');
+    document.getElementById('coinflip-matched').classList.remove('active');
+    document.getElementById('coinflip-bet-section').style.display = '';
+    document.getElementById('coinflip-waiting-match').style.display = 'none';
+    document.getElementById('coinflip-matching').style.display = 'none';
+    document.getElementById('coinflip-waiting-to-match').style.display = 'none';
+    document.getElementById('coinflip-flipping').style.display = 'none';
+    document.getElementById('coinflip-result').style.display = 'none';
+    const coin = document.getElementById('the-coin');
+    if (coin) {
+        coin.className = 'coin';
+    }
+}
+
+function resetCoinFlip() {
+    resetCoinFlipUI();
+}
+
+async function joinCoinFlip() {
+    if (!requireToken()) return;
+    
+    const db = await reloadDB();
+    if (!db.coinflip) db.coinflip = { queue: [], active: {} };
+    
+    // Check if already in queue or in a game
+    const inQueue = db.coinflip.queue.find(q => q.username === currentUser);
+    const inGame = db.coinflip.active[currentUser];
+    if (inQueue || inGame) {
+        showToast('You are already in a game!', 'error');
+        return;
+    }
+    
+    // Check balance
+    const user = db.users[currentUser];
+    if (!user || user.balance < 10) {
+        showToast('You need at least 10 credits to play!', 'error');
+        return;
+    }
+    
+    db.coinflip.queue.push({
+        username: currentUser,
+        joinedAt: Date.now()
+    });
+    
+    await saveDB(db);
+    showToast('Joined the coin flip queue!', 'success');
+    await checkCoinFlipQueue();
+}
+
+async function checkCoinFlipQueue() {
+    if (!currentUser) return;
+    
+    const db = await reloadDB();
+    if (!db.coinflip) db.coinflip = { queue: [], active: {} };
+    
+    // Check if we're in an active game
+    const activeGame = db.coinflip.active[currentUser];
+    if (activeGame) {
+        await handleActiveGame(db, activeGame);
+        return;
+    }
+    
+    // Check queue
+    const myQueueEntry = db.coinflip.queue.find(q => q.username === currentUser);
+    if (!myQueueEntry) {
+        // Not in queue, show waiting screen
+        const queueCount = db.coinflip.queue.length;
+        document.getElementById('coinflip-queue-count').textContent = 
+            queueCount > 0 ? `${queueCount} player(s) in queue` : '';
+        resetCoinFlipUI();
+        return;
+    }
+    
+    // We're in queue - check for match
+    if (db.coinflip.queue.length >= 2) {
+        // Match the first two players
+        const player1 = db.coinflip.queue.shift();
+        const player2 = db.coinflip.queue.shift();
+        
+        db.coinflip.active[player1.username] = {
+            player1: player1.username,
+            player2: player2.username,
+            bet: 0,
+            bet2: 0,
+            status: 'setting_bet', // setting_bet, waiting_match, flipping, done
+            coinSide: Math.random() < 0.5 ? 'heads' : 'tails',
+            createdAt: Date.now()
+        };
+        db.coinflip.active[player2.username] = db.coinflip.active[player1.username];
+        
+        await saveDB(db);
+        showToast(`Matched with ${player2.username}!`, 'success');
+        await handleActiveGame(db, db.coinflip.active[currentUser]);
+    } else {
+        // Still waiting
+        document.getElementById('coinflip-waiting').classList.add('active');
+        document.getElementById('coinflip-matched').classList.remove('active');
+        document.getElementById('coinflip-queue-count').textContent = 'Waiting for opponent...';
+    }
+}
+
+async function handleActiveGame(db, game) {
+    const isP1 = game.player1 === currentUser;
+    
+    // Show matched screen
+    document.getElementById('coinflip-waiting').classList.remove('active');
+    document.getElementById('coinflip-matched').classList.add('active');
+    
+    // Set player info
+    document.getElementById('cf-player1-name').textContent = game.player1;
+    document.getElementById('cf-player1-avatar').textContent = game.player1[0].toUpperCase();
+    document.getElementById('cf-player2-name').textContent = game.player2;
+    document.getElementById('cf-player2-avatar').textContent = game.player2[0].toUpperCase();
+    
+    const user = db.users[currentUser];
+    const balance = user ? user.balance : 0;
+    
+    if (game.status === 'setting_bet') {
+        if (isP1) {
+            // Player 1 sets the bet
+            document.getElementById('coinflip-bet-section').style.display = '';
+            document.getElementById('coinflip-waiting-match').style.display = 'none';
+            document.getElementById('coinflip-matching').style.display = 'none';
+            document.getElementById('coinflip-waiting-to-match').style.display = 'none';
+            document.getElementById('cf-your-balance').textContent = formatNumber(balance);
+        } else {
+            // Player 2 waits for bet
+            document.getElementById('coinflip-bet-section').style.display = 'none';
+            document.getElementById('coinflip-waiting-match').style.display = 'none';
+            document.getElementById('coinflip-matching').style.display = 'none';
+            document.getElementById('coinflip-waiting-to-match').style.display = 'none';
+            // Show a waiting message
+            document.getElementById('coinflip-bet-section').style.display = 'none';
+            const waitDiv = document.getElementById('coinflip-matching');
+            waitDiv.innerHTML = '<p style="color: var(--text-secondary); font-size: 16px;">Waiting for opponent to set the bet...</p><div class="spinner"></div>';
+            waitDiv.style.display = '';
+        }
+    } else if (game.status === 'waiting_match') {
+        // Bet is set, waiting for P2 to match
+        if (!isP1) {
+            // Player 2 can match
+            document.getElementById('coinflip-bet-section').style.display = 'none';
+            document.getElementById('coinflip-waiting-match').style.display = 'none';
+            document.getElementById('coinflip-matching').style.display = 'none';
+            document.getElementById('coinflip-waiting-to-match').style.display = '';
+            document.getElementById('cf-opponent-bet').textContent = formatNumber(game.bet);
+            document.getElementById('cf-your-balance2').textContent = formatNumber(balance);
+        } else {
+            // Player 1 waits for match
+            document.getElementById('coinflip-bet-section').style.display = 'none';
+            document.getElementById('coinflip-waiting-match').style.display = '';
+            document.getElementById('coinflip-bet-display').textContent = formatNumber(game.bet);
+            document.getElementById('coinflip-matching').style.display = 'none';
+            document.getElementById('coinflip-waiting-to-match').style.display = 'none';
+        }
+    } else if (game.status === 'flipping') {
+        document.getElementById('coinflip-bet-section').style.display = 'none';
+        document.getElementById('coinflip-waiting-match').style.display = 'none';
+        document.getElementById('coinflip-matching').style.display = 'none';
+        document.getElementById('coinflip-waiting-to-match').style.display = 'none';
+        document.getElementById('coinflip-flipping').style.display = '';
+        
+        // Start the flip animation if not already done
+        const coin = document.getElementById('the-coin');
+        if (!coin.classList.contains('flipping') && !coin.classList.contains('win') && !coin.classList.contains('lose')) {
+            coin.classList.add('flipping');
+            // After animation, show result
+            setTimeout(() => showCoinFlipResult(db, game), 1500);
+        }
+    } else if (game.status === 'done') {
+        await showCoinFlipResult(db, game);
+    }
+}
+
+async function setCoinFlipBet() {
+    if (!requireToken()) return;
+    
+    const amount = parseInt(document.getElementById('coinflip-bet-amount').value);
+    if (!amount || amount < 1) {
+        showToast('Enter a valid bet amount', 'error');
+        return;
+    }
+    
+    const db = await reloadDB();
+    const game = db.coinflip?.active[currentUser];
+    if (!game || game.status !== 'setting_bet' || game.player1 !== currentUser) {
+        showToast('Not your turn to set the bet', 'error');
+        return;
+    }
+    
+    const user = db.users[currentUser];
+    if (!user || user.balance < amount) {
+        showToast('Insufficient balance!', 'error');
+        return;
+    }
+    
+    if (amount > 10000) {
+        showToast('Max bet is 10,000 credits', 'error');
+        return;
+    }
+    
+    game.bet = amount;
+    game.status = 'waiting_match';
+    await saveDB(db);
+    showToast(`Bet set to ${formatNumber(amount)} credits!`, 'success');
+    await checkCoinFlipQueue();
+}
+
+async function matchCoinFlipBet() {
+    if (!requireToken()) return;
+    
+    const db = await reloadDB();
+    const game = db.coinflip?.active[currentUser];
+    if (!game || game.status !== 'waiting_match' || game.player2 !== currentUser) {
+        showToast('Not your turn', 'error');
+        return;
+    }
+    
+    const user = db.users[currentUser];
+    if (!user || user.balance < game.bet) {
+        showToast('Insufficient balance to match!', 'error');
+        return;
+    }
+    
+    game.status = 'flipping';
+    await saveDB(db);
+    showToast('Matched! Flipping the coin...', 'success');
+    await checkCoinFlipQueue();
+}
+
+async function showCoinFlipResult(db, game) {
+    if (game.status !== 'done') {
+        // Process the flip result
+        const result = game.coinSide; // 'heads' or 'tails'
+        const isP1Heads = true; // P1 is always heads
+        const winner = result === 'heads' ? game.player1 : game.player2;
+        const loser = result === 'heads' ? game.player2 : game.player1;
+        const isWinner = winner === currentUser;
+        
+        // Payout: winner gets both bets, so net gain = opponent's bet
+        const winnerUser = db.users[winner];
+        const loserUser = db.users[loser];
+        
+        if (winnerUser) winnerUser.balance = (winnerUser.balance || 0) + game.bet;
+        if (loserUser) loserUser.balance = Math.max(0, (loserUser.balance || 0) - game.bet);
+        
+        // Record transaction
+        if (!db.transactions) db.transactions = [];
+        db.transactions.push({
+            type: 'coinflip',
+            from: loser,
+            to: winner,
+            amount: game.bet,
+            timestamp: Date.now(),
+            note: `Coin flip: ${result}! ${winner} wins!`
+        });
+        
+        game.status = 'done';
+        game.result = result;
+        game.winner = winner;
+        await saveDB(db);
+        
+        // Reload user data
+        const freshDb = await reloadDB();
+        userData = freshDb.users[currentUser];
+    }
+    
+    // Show the result
+    const coin = document.getElementById('the-coin');
+    const isWinner = game.winner === currentUser;
+    
+    coin.classList.remove('flipping');
+    coin.classList.add(isWinner ? 'win' : 'lose');
+    
+    document.getElementById('coinflip-flipping').style.display = 'none';
+    document.getElementById('coinflip-result').style.display = '';
+    
+    document.getElementById('cf-result-icon').textContent = isWinner ? '🏆' : '💔';
+    document.getElementById('cf-result-text').textContent = isWinner ? 'You Won!' : 'You Lost!';
+    document.getElementById('cf-result-text').style.color = isWinner ? 'var(--success)' : 'var(--danger)';
+    document.getElementById('cf-result-amount').textContent = isWinner 
+        ? `+${formatNumber(game.bet)} credits` 
+        : `-${formatNumber(game.bet)} credits`;
+    document.getElementById('cf-result-amount').style.color = isWinner ? 'var(--success)' : 'var(--danger)';
+    
+    updateUI();
 }
 
 // ==================== UTILITIES ====================
