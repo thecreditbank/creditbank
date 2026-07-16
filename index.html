@@ -188,6 +188,10 @@
                     <i class="fas fa-newspaper"></i>
                     <span>Feed</span>
                 </li>
+                <li class="nav-item" data-tab="coinflip">
+                    <i class="fas fa-coins"></i>
+                    <span>Coin Flip</span>
+                </li>
                 <li class="nav-item admin-only" data-tab="admin" style="display:none;">
                     <i class="fas fa-cog"></i>
                     <span>Admin Panel</span>
@@ -338,6 +342,78 @@
                 <div id="posts-feed"></div>
             </div>
             
+            <!-- Coin Flip Tab -->
+            <div id="tab-coinflip" class="tab-content">
+                <h2><i class="fas fa-coins"></i> Coin Flip</h2>
+                
+                <div id="coinflip-waiting" class="coinflip-state">
+                    <div class="coinflip-card">
+                        <div class="coin-icon">🪙</div>
+                        <h3>Ready to Flip?</h3>
+                        <p style="color: var(--text-secondary); margin-bottom: 24px;">Join the queue and get matched with another player. Winner takes all!</p>
+                        <button id="coinflip-play-btn" class="btn-primary" onclick="joinCoinFlip()">Join Queue</button>
+                        <div id="coinflip-queue-count" style="color: var(--text-secondary); margin-top: 16px; font-size: 14px;"></div>
+                    </div>
+                </div>
+                
+                <div id="coinflip-matched" class="coinflip-state" style="display:none;">
+                    <div class="coinflip-card">
+                        <div class="matchup">
+                            <div class="player-card">
+                                <div class="player-avatar" id="cf-player1-avatar">?</div>
+                                <span id="cf-player1-name">You</span>
+                            </div>
+                            <div class="vs-badge">VS</div>
+                            <div class="player-card">
+                                <div class="player-avatar" id="cf-player2-avatar">?</div>
+                                <span id="cf-player2-name">Waiting...</span>
+                            </div>
+                        </div>
+                        
+                        <div id="coinflip-bet-section">
+                            <p style="color: var(--text-secondary); margin-bottom: 16px;">Set the bet amount. Your opponent must match it.</p>
+                            <div class="form-group">
+                                <label>Bet Amount</label>
+                                <input type="number" id="coinflip-bet-amount" placeholder="Enter amount" min="1">
+                            </div>
+                            <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 16px;">Your balance: <span id="cf-your-balance" style="color: var(--success); font-weight: 600;">0</span></p>
+                            <button class="btn-primary" onclick="setCoinFlipBet()">Set Bet</button>
+                        </div>
+                        
+                        <div id="coinflip-waiting-match" style="display:none;">
+                            <p style="color: var(--warning); font-size: 16px;">Waiting for opponent to match <span id="cf-bet-display">0</span> credits...</p>
+                            <div class="spinner"></div>
+                        </div>
+                        
+                        <div id="coinflip-matching" style="display:none;">
+                            <p style="color: var(--primary); font-size: 16px;">Opponent must match your bet...</p>
+                            <div class="spinner"></div>
+                        </div>
+                        
+                        <div id="coinflip-waiting-to-match" style="display:none;">
+                            <p style="color: var(--text-secondary); margin-bottom: 12px;">Opponent bet: <span id="cf-opponent-bet" style="color: var(--warning); font-weight: 700;">0</span> credits</p>
+                            <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 16px;">Your balance: <span id="cf-your-balance2" style="color: var(--success); font-weight: 600;">0</span></p>
+                            <button class="btn-success" onclick="matchCoinFlipBet()">Match Bet & Flip!</button>
+                        </div>
+                        
+                        <div id="coinflip-flipping" style="display:none;">
+                            <div class="coin" id="the-coin">
+                                <div class="coin-heads">🪙</div>
+                                <div class="coin-tails">🔴</div>
+                            </div>
+                            <p style="margin-top: 20px; font-size: 18px; color: var(--text-primary);">Flipping...</p>
+                        </div>
+                        
+                        <div id="coinflip-result" style="display:none;">
+                            <div id="cf-result-icon" style="font-size: 80px; margin-bottom: 16px;"></div>
+                            <h3 id="cf-result-text" style="font-size: 24px; margin-bottom: 8px;"></h3>
+                            <p id="cf-result-amount" style="font-size: 18px; margin-bottom: 24px;"></p>
+                            <button class="btn-primary" onclick="resetCoinFlip()">Play Again</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Admin Tab -->
             <div id="tab-admin" class="tab-content">
                 <h2><i class="fas fa-cog"></i> Admin Panel</h2>
