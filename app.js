@@ -1,7 +1,7 @@
 // ==================== GITHUB DATABASE ====================
 // Using GitHub as shared database - all users interact!
 
-const GITHUB_TOKEN_DEFAULT = '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';
+const GITHUB_TOKEN_DEFAULT = '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';
 const GITHUB_TOKEN = localStorage.getItem('creditbank_github_token') || GITHUB_TOKEN_DEFAULT;
 const GITHUB_REPO = 'thecreditbank/creditbank-data';
 const DB_FILE = 'db.json';
