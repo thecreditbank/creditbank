@@ -1320,9 +1320,12 @@ async function loadCoinFlip() {
     if (!currentUser) return;
     resetCoinFlipUI();
     await checkCoinFlipQueue();
-    // Poll every 2 seconds for matches
+    // Poll every 2 seconds for matches (only in multiplayer mode)
     if (coinflipPollInterval) clearInterval(coinflipPollInterval);
-    coinflipPollInterval = setInterval(checkCoinFlipQueue, 2000);
+    const multiMode = document.getElementById('coinflip-multi');
+    if (multiMode && multiMode.style.display !== 'none') {
+        coinflipPollInterval = setInterval(checkCoinFlipQueue, 2000);
+    }
 }
 
 function resetCoinFlipUI() {
@@ -1342,6 +1345,158 @@ function resetCoinFlipUI() {
 
 function resetCoinFlip() {
     resetCoinFlipUI();
+}
+
+// ==================== COINFLIP MODE SWITCHING ====================
+function switchCoinflipMode(mode) {
+    // Update mode buttons
+    document.querySelectorAll('.coinflip-mode-btn').forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    // Show/hide modes
+    document.getElementById('coinflip-multi').style.display = mode === 'multi' ? '' : 'none';
+    document.getElementById('coinflip-multi').classList.toggle('active', mode === 'multi');
+    document.getElementById('coinflip-risk').style.display = mode === 'risk' ? '' : 'none';
+    document.getElementById('coinflip-risk').classList.toggle('active', mode === 'risk');
+    
+    // Stop multiplayer polling if switching away
+    if (mode !== 'multi' && coinflipPollInterval) {
+        clearInterval(coinflipPollInterval);
+        coinflipPollInterval = null;
+    }
+    
+    // Load risk mode balance
+    if (mode === 'risk') loadRiskBalance();
+}
+
+async function loadRiskBalance() {
+    const db = await reloadDB();
+    const user = db.users[currentUser];
+    const balance = user ? user.balance : 0;
+    document.getElementById('risk-balance').textContent = formatNumber(balance);
+}
+
+// ==================== RISK MODE ====================
+let riskFlipping = false;
+
+function startRiskFlip(chosenColor) {
+    if (riskFlipping) return;
+    if (!requireToken()) return;
+    
+    const balance = userData ? userData.balance : 0;
+    if (balance <= 0) {
+        showToast('You have no credits to risk!', 'error');
+        return;
+    }
+    
+    // Show flipping state
+    document.getElementById('risk-choose').style.display = 'none';
+    document.getElementById('risk-flipping').style.display = '';
+    document.getElementById('risk-result').style.display = 'none';
+    
+    document.getElementById('risk-chosen-color').textContent = chosenColor === 'yellow' ? '🟡 Yellow' : '🔴 Red';
+    document.getElementById('risk-chosen-color').style.color = chosenColor === 'yellow' ? '#EAB308' : '#EF4444';
+    document.getElementById('risk-bet-amount').textContent = formatNumber(balance);
+    
+    // Reset coin
+    const coin = document.getElementById('risk-the-coin');
+    coin.className = 'coin';
+    
+    riskFlipping = true;
+    
+    // Start flip animation
+    setTimeout(() => {
+        coin.classList.add('flipping');
+    }, 100);
+    
+    // Determine result after animation
+    setTimeout(async () => {
+        const result = Math.random() < 0.5 ? 'yellow' : 'red';
+        const won = result === chosenColor;
+        
+        coin.classList.remove('flipping');
+        coin.classList.add(won ? 'win' : 'lose');
+        
+        // Process result in database
+        const db = await reloadDB();
+        const user = db.users[currentUser];
+        if (!user) return;
+        
+        const betAmount = user.balance;
+        
+        if (won) {
+            // Winner gets double (net gain = bet amount)
+            user.balance = betAmount * 2;
+            user.totalEarned = (user.totalEarned || 0) + betAmount;
+        } else {
+            // Loser loses everything
+            user.balance = 0;
+        }
+        
+        // Record transaction
+        if (!db.transactions) db.transactions = [];
+        db.transactions.push({
+            type: 'risk_flip',
+            userId: currentUser,
+            bet: betAmount,
+            won: won,
+            result: result,
+            chosenColor: chosenColor,
+            payout: won ? betAmount * 2 : 0,
+            timestamp: Date.now()
+        });
+        
+        await saveDB(db);
+        
+        // Reload user data
+        const freshDb = await reloadDB();
+        userData = freshDb.users[currentUser];
+        
+        // Show result
+        setTimeout(() => {
+            document.getElementById('risk-flipping').style.display = 'none';
+            document.getElementById('risk-result').style.display = '';
+            
+            const resultIcon = document.getElementById('risk-result-icon');
+            const resultText = document.getElementById('risk-result-text');
+            const resultDetail = document.getElementById('risk-result-detail');
+            const resultAmount = document.getElementById('risk-result-amount');
+            
+            resultIcon.textContent = result === 'yellow' ? '🟡' : '🔴';
+            
+            if (won) {
+                resultText.textContent = 'You Won!';
+                resultText.style.color = 'var(--success)';
+                resultDetail.textContent = `The coin landed on ${result === 'yellow' ? '🟡 Yellow' : '🔴 Red'}!`;
+                resultAmount.textContent = `+${formatNumber(betAmount)} credits (doubled!)`;
+                resultAmount.style.color = 'var(--success)';
+                resultIcon.classList.add('risk-win-glow');
+                resultIcon.classList.remove('risk-lose-shake');
+            } else {
+                resultText.textContent = 'You Lost Everything!';
+                resultText.style.color = 'var(--danger)';
+                resultDetail.textContent = `The coin landed on ${result === 'yellow' ? '🟡 Yellow' : '🔴 Red'}... you chose ${chosenColor === 'yellow' ? '🟡 Yellow' : '🔴 Red'}.`;
+                resultAmount.textContent = `-${formatNumber(betAmount)} credits (all gone)`;
+                resultAmount.style.color = 'var(--danger)';
+                resultIcon.classList.remove('risk-win-glow');
+                resultIcon.classList.add('risk-lose-shake');
+            }
+            
+            riskFlipping = false;
+            updateUI();
+        }, 400);
+    }, 1600);
+}
+
+function resetRiskMode() {
+    document.getElementById('risk-choose').style.display = '';
+    document.getElementById('risk-flipping').style.display = 'none';
+    document.getElementById('risk-result').style.display = 'none';
+    
+    const coin = document.getElementById('risk-the-coin');
+    if (coin) coin.className = 'coin';
+    
+    loadRiskBalance();
 }
 
 async function joinCoinFlip() {
