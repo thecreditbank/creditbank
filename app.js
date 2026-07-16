@@ -156,17 +156,22 @@ function saveToken() {
     const input = document.getElementById('token-input');
     const token = input.value.trim();
     
+    console.log('Token input:', token ? token.substring(0, 10) + '...' : 'empty');
+    
     if (!token || !token.startsWith('ghp_')) {
+        console.log('Token validation failed');
         showMessage('Please enter a valid GitHub token (starts with ghp_)', 'error');
         return;
     }
     
+    console.log('Token valid, saving...');
     setGithubToken(token);
     
     // Switch to login step
     document.getElementById('step-token').style.display = 'none';
     document.getElementById('step-login').style.display = 'block';
     
+    console.log('Switched to login step');
     showToast('Token saved! Now create your account or login.', 'success');
 }
 
@@ -1252,25 +1257,17 @@ function showToast(message, type = 'success') {
 }
 
 function showMessage(message, type) {
-    // Try both message elements
-    let msgEl = document.getElementById('login-message');
+    // Find the visible message element
+    const msgEl = document.getElementById('token-message') || document.getElementById('login-message');
     if (msgEl) {
         msgEl.textContent = message;
         msgEl.className = `message ${type}`;
     }
-    // Also try auth-message for token step
-    let tokenMsg = document.getElementById('auth-message');
-    if (tokenMsg) {
-        tokenMsg.textContent = message;
-        tokenMsg.className = `message ${type}`;
-    }
 }
 
 function clearMessage() {
-    const msgEl = document.getElementById('login-message');
+    const msgEl = document.getElementById('token-message') || document.getElementById('login-message');
     if (msgEl) msgEl.className = 'message';
-    const tokenMsg = document.getElementById('auth-message');
-    if (tokenMsg) tokenMsg.className = 'message';
 }
 
 function validatePassword(password) {
