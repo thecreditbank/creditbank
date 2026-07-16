@@ -26,6 +26,12 @@ async function getDB() {
             dbSha = data.sha;
             const content = decodeURIComponent(escape(atob(data.content)));
             dbCache = JSON.parse(content);
+            // Ensure arrays exist
+            if (!dbCache.posts) dbCache.posts = [];
+            if (!dbCache.comments) dbCache.comments = [];
+            if (!dbCache.transactions) dbCache.transactions = [];
+            if (!dbCache.friends) dbCache.friends = [];
+            if (!dbCache.dailyRewards) dbCache.dailyRewards = [];
             return dbCache;
         }
     } catch (error) {
@@ -49,14 +55,28 @@ async function getDB() {
         },
         transactions: [],
         friends: [],
-        dailyRewards: []
+        dailyRewards: [],
+        posts: [],
+        comments: []
     };
+}
+
+// Force reload the database from GitHub
+async function reloadDB() {
+    dbCache = null;
+    dbSha = null;
+    return await getDB();
 }
 
 async function saveDB(db) {
     try {
         const content = JSON.stringify(db, null, 2);
         const encodedContent = btoa(unescape(encodeURIComponent(content)));
+        
+        // Make sure we have the latest sha
+        if (!dbSha) {
+            await reloadDB();
+        }
         
         const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${DB_FILE}`, {
             method: 'PUT',
@@ -75,7 +95,19 @@ async function saveDB(db) {
             const data = await response.json();
             dbSha = data.content.sha;
             dbCache = db;
+            console.log('Database saved successfully');
             return true;
+        } else {
+            const errorData = await response.json();
+            console.error('Save failed:', response.status, errorData);
+            // If sha mismatch, reload and try again
+            if (response.status === 422 || response.status === 409) {
+                console.log('SHA mismatch, reloading database...');
+                await reloadDB();
+                // Merge changes into fresh db and retry
+                Object.assign(dbCache, db);
+                return await saveDB(dbCache);
+            }
         }
     } catch (error) {
         console.error('Error saving database:', error);
@@ -100,8 +132,8 @@ let currentPostId = null; // For modal
 
 // ==================== INITIALIZATION ====================
 document.addEventListener('DOMContentLoaded', async () => {
-    // Load database
-    await getDB();
+    // Load database from GitHub
+    await reloadDB();
     
     // Hide admin elements initially
     const adminOnlyNav = document.querySelector('.nav-item.admin-only');
@@ -156,7 +188,14 @@ async function handleLogin(e) {
     const username = document.getElementById('login-username').value.trim();
     const password = document.getElementById('login-password').value;
     
-    const db = await getDB();
+    if (!username || !password) {
+        showMessage("Please fill in all fields!", 'error');
+        return;
+    }
+    
+    // Always reload from GitHub to get latest users
+    const db = await reloadDB();
+    console.log('Login: loaded DB, users:', Object.keys(db.users).length);
     
     // Find user by username
     let foundUser = null;
@@ -174,7 +213,10 @@ async function handleLogin(e) {
         return;
     }
     
-    if (foundUser.password !== hashPassword(password)) {
+    const inputHash = hashPassword(password);
+    console.log('Login attempt:', username, 'input hash:', inputHash, 'stored hash:', foundUser.password);
+    
+    if (foundUser.password !== inputHash) {
         showMessage("Wrong password!", 'error');
         return;
     }
@@ -190,6 +232,11 @@ async function handleRegister(e) {
     const username = document.getElementById('reg-username').value.trim();
     const password = document.getElementById('reg-password').value;
     const confirm = document.getElementById('reg-confirm').value;
+    
+    if (!username || !password || !confirm) {
+        showMessage("Please fill in all fields!", 'error');
+        return;
+    }
     
     if (password !== confirm) {
         showMessage("Passwords don't match!", 'error');
@@ -207,7 +254,9 @@ async function handleRegister(e) {
         return;
     }
     
-    const db = await getDB();
+    // Always reload from GitHub to get latest users
+    const db = await reloadDB();
+    console.log('Register: loaded DB, users:', Object.keys(db.users).length);
     
     // Check if username exists
     for (const id in db.users) {
@@ -219,10 +268,13 @@ async function handleRegister(e) {
     
     // Create user
     const userId = 'user_' + Date.now();
+    const hashedPw = hashPassword(password);
+    console.log('Registering:', username, 'hash:', hashedPw);
+    
     db.users[userId] = {
         id: userId,
         username: username,
-        password: hashPassword(password),
+        password: hashedPw,
         balance: 100,
         totalEarned: 100,
         totalSent: 0,
@@ -230,6 +282,13 @@ async function handleRegister(e) {
         isAdmin: false,
         createdAt: new Date().toISOString()
     };
+    
+    // Ensure arrays exist
+    if (!db.posts) db.posts = [];
+    if (!db.comments) db.comments = [];
+    if (!db.transactions) db.transactions = [];
+    if (!db.friends) db.friends = [];
+    if (!db.dailyRewards) db.dailyRewards = [];
     
     // Add welcome bonus transaction
     db.transactions.push({
@@ -240,7 +299,13 @@ async function handleRegister(e) {
         createdAt: new Date().toISOString()
     });
     
-    await saveDB(db);
+    const saved = await saveDB(db);
+    console.log('Register save result:', saved);
+    
+    if (!saved) {
+        showMessage("Failed to create account. Try again!", 'error');
+        return;
+    }
     
     currentUser = userId;
     userData = db.users[userId];
@@ -271,6 +336,12 @@ function showAuth() {
 async function showDashboard() {
     document.getElementById('auth-screen').classList.remove('active');
     document.getElementById('dashboard-screen').classList.add('active');
+    
+    // Reload user data from GitHub
+    const db = await reloadDB();
+    if (db.users[currentUser]) {
+        userData = db.users[currentUser];
+    }
     
     // Reset admin visibility before updateUI
     const adminOnlyNav = document.querySelector('.nav-item.admin-only');
@@ -342,7 +413,8 @@ async function sendCredits() {
         return;
     }
     
-    const db = await getDB();
+    // Reload from GitHub
+    const db = await reloadDB();
     
     let recipientUser = null;
     let recipientId = null;
@@ -363,6 +435,9 @@ async function sendCredits() {
         showToast("You can't send credits to yourself!", 'error');
         return;
     }
+    
+    // Reload current user data
+    userData = db.users[currentUser];
     
     if (userData.balance < amount) {
         showToast('Insufficient balance!', 'error');
@@ -407,7 +482,8 @@ async function sendCredits() {
 
 // ==================== FRIENDS ====================
 async function loadFriends() {
-    const db = await getDB();
+    // Reload from GitHub
+    const db = await reloadDB();
     
     const pending = db.friends.filter(f => f.friendId === currentUser && f.status === 'pending');
     const pendingList = document.getElementById('pending-list');
@@ -475,7 +551,8 @@ async function addFriend() {
         return;
     }
     
-    const db = await getDB();
+    // Reload from GitHub
+    const db = await reloadDB();
     
     let targetUser = null;
     let targetId = null;
@@ -521,7 +598,8 @@ async function addFriend() {
 }
 
 async function acceptFriend(friendUserId) {
-    const db = await getDB();
+    // Reload from GitHub
+    const db = await reloadDB();
     
     const request = db.friends.find(f => f.userId === friendUserId && f.friendId === currentUser && f.status === 'pending');
     if (request) {
@@ -545,7 +623,8 @@ async function acceptFriend(friendUserId) {
 
 // ==================== LEADERBOARD ====================
 async function loadLeaderboard() {
-    const db = await getDB();
+    // Reload from GitHub
+    const db = await reloadDB();
     
     const allUsers = Object.values(db.users).sort((a, b) => b.balance - a.balance).slice(0, 10);
     const globalList = document.getElementById('global-leaderboard');
@@ -619,7 +698,8 @@ function showLeaderboard(type) {
 
 // ==================== HISTORY ====================
 async function loadHistory() {
-    const db = await getDB();
+    // Reload from GitHub
+    const db = await reloadDB();
     
     const transactions = db.transactions.filter(t => 
         t.fromUserId === currentUser || t.toUserId === currentUser
@@ -652,7 +732,8 @@ async function loadHistory() {
 let currentModalPostId = null;
 
 async function loadFeed() {
-    const db = await getDB();
+    // Always reload from GitHub to get latest posts
+    const db = await reloadDB();
     
     const posts = (db.posts || []).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     const feedEl = document.getElementById('posts-feed');
@@ -703,7 +784,8 @@ async function createPost() {
         return;
     }
     
-    const db = await getDB();
+    // Reload from GitHub to get latest state
+    const db = await reloadDB();
     
     if (!db.posts) db.posts = [];
     
@@ -715,11 +797,21 @@ async function createPost() {
     };
     
     db.posts.push(newPost);
+    console.log('Creating post:', newPost.id, 'total posts:', db.posts.length);
     
-    await saveDB(db);
+    const saved = await saveDB(db);
+    console.log('Post save result:', saved);
+    
+    if (!saved) {
+        showToast('Failed to save post. Try again!', 'error');
+        return;
+    }
     
     document.getElementById('post-content').value = '';
     showToast('Post created!', 'success');
+    
+    // Force reload and refresh feed
+    dbCache = null;
     await loadFeed();
 }
 
@@ -778,7 +870,8 @@ async function submitComment() {
         return;
     }
     
-    const db = await getDB();
+    // Reload from GitHub
+    const db = await reloadDB();
     
     if (!db.comments) db.comments = [];
     
@@ -791,13 +884,18 @@ async function submitComment() {
     };
     
     db.comments.push(newComment);
-    await saveDB(db);
+    
+    const saved = await saveDB(db);
+    if (!saved) {
+        showToast('Failed to save comment. Try again!', 'error');
+        return;
+    }
     
     document.getElementById('comment-input').value = '';
     showToast('Comment posted!', 'success');
     
     // Refresh comments view
-    viewComments();
+    await viewComments();
 }
 
 async function viewComments() {
@@ -805,7 +903,8 @@ async function viewComments() {
     document.getElementById('comments-section').style.display = 'block';
     document.getElementById('donate-input-section').style.display = 'none';
     
-    const db = await getDB();
+    // Reload from GitHub
+    const db = await reloadDB();
     const comments = (db.comments || [])
         .filter(c => c.postId === currentModalPostId)
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -852,7 +951,8 @@ async function submitDonate() {
         return;
     }
     
-    const db = await getDB();
+    // Reload from GitHub
+    const db = await reloadDB();
     const post = (db.posts || []).find(p => p.id === currentModalPostId);
     
     if (!post) {
@@ -935,7 +1035,8 @@ async function adminGiveCredits() {
         return;
     }
     
-    const db = await getDB();
+    // Reload from GitHub
+    const db = await reloadDB();
     
     let targetUser = null;
     let targetId = null;
@@ -977,7 +1078,8 @@ async function adminGiveSelf() {
         return;
     }
     
-    const db = await getDB();
+    // Reload from GitHub
+    const db = await reloadDB();
     db.users[currentUser].balance += amount;
     db.users[currentUser].totalReceived += amount;
     
@@ -1005,7 +1107,8 @@ async function adminSetBalance() {
         return;
     }
     
-    const db = await getDB();
+    // Reload from GitHub
+    const db = await reloadDB();
     
     let targetUser = null;
     let targetId = null;
@@ -1039,7 +1142,8 @@ async function adminSetBalance() {
 }
 
 async function loadAdminData() {
-    const db = await getDB();
+    // Reload from GitHub
+    const db = await reloadDB();
     
     const allUsers = Object.values(db.users).sort((a, b) => b.balance - a.balance);
     const usersList = document.getElementById('all-users-list');
