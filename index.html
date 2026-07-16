@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CreditBank - Virtual Banking</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Login/Register Screen -->
+    <div id="auth-screen" class="screen active">
+        <div class="auth-container">
+            <div class="auth-logo">
+                <i class="fas fa-university"></i>
+                <h1>CreditBank</h1>
+                <p>Your Virtual Banking System</p>
+            </div>
+            
+            <div class="auth-tabs">
+                <button class="tab-btn active" onclick="showTab('login')">Login</button>
+                <button class="tab-btn" onclick="showTab('register')">Register</button>
+            </div>
+            
+            <!-- Login Form -->
+            <form id="login-form" class="auth-form active">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="login-username" placeholder="Enter your username" required>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="login-password" placeholder="Enter your password" required>
+                </div>
+                <button type="submit" class="btn-primary">Login</button>
+            </form>
+            
+            <!-- Register Form -->
+            <form id="register-form" class="auth-form">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="reg-username" placeholder="Choose a username (3+ chars)" required minlength="3">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="reg-password" placeholder="Create a password" required>
+                </div>
+                <div class="form-group">
+                    <label>Confirm Password</label>
+                    <input type="password" id="reg-confirm" placeholder="Confirm your password" required>
+                </div>
+                <div class="password-requirements">
+                    <p>Password must have:</p>
+                    <ul>
+                        <li id="req-length">8+ characters</li>
+                        <li id="req-upper">Uppercase letter</li>
+                        <li id="req-lower">Lowercase letter</li>
+                        <li id="req-number">Number</li>
+                        <li id="req-special">Special character</li>
+                    </ul>
+                </div>
+                <button type="submit" class="btn-primary">Register</button>
+            </form>
+            
+            <div id="auth-message" class="message"></div>
+        </div>
+    </div>
+    
+    <!-- Dashboard Screen -->
+    <div id="dashboard-screen" class="screen">
+        <!-- Sidebar -->
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <i class="fas fa-university"></i>
+                <span>CreditBank</span>
+            </div>
+            
+            <div class="user-info">
+                <div class="user-avatar" id="user-avatar">U</div>
+                <div class="user-details">
+                    <span id="user-name">Username</span>
+                    <span id="user-balance" class="balance">0 credits</span>
+                </div>
+            </div>
+            
+            <ul class="nav-menu">
+                <li class="nav-item active" data-tab="home">
+                    <i class="fas fa-home"></i>
+                    <span>Home</span>
+                </li>
+                <li class="nav-item" data-tab="send">
+                    <i class="fas fa-paper-plane"></i>
+                    <span>Send Credits</span>
+                </li>
+                <li class="nav-item" data-tab="friends">
+                    <i class="fas fa-users"></i>
+                    <span>Friends</span>
+                </li>
+                <li class="nav-item" data-tab="leaderboard">
+                    <i class="fas fa-trophy"></i>
+                    <span>Leaderboard</span>
+                </li>
+                <li class="nav-item" data-tab="history">
+                    <i class="fas fa-history"></i>
+                    <span>History</span>
+                </li>
+                <li class="nav-item" data-tab="earn">
+                    <i class="fas fa-coins"></i>
+                    <span>Earn Credits</span>
+                </li>
+                <li class="nav-item" data-tab="daily">
+                    <i class="fas fa-gift"></i>
+                    <span>Daily Reward</span>
+                </li>
+                <li class="nav-item admin-only" data-tab="admin" style="display:none;">
+                    <i class="fas fa-cog"></i>
+                    <span>Admin Panel</span>
+                </li>
+            </ul>
+            
+            <button class="logout-btn" onclick="logout()">
+                <i class="fas fa-sign-out-alt"></i>
+                <span>Logout</span>
+            </button>
+        </nav>
+        
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Home Tab -->
+            <div id="tab-home" class="tab-content active">
+                <h2>Welcome, <span id="welcome-name">User</span>! 👋</h2>
+                
+                <div class="stats-grid">
+                    <div class="stat-card green">
+                        <div class="stat-icon"><i class="fas fa-wallet"></i></div>
+                        <div class="stat-info">
+                            <span class="stat-label">Balance</span>
+                            <span class="stat-value" id="stat-balance">0</span>
+                        </div>
+                    </div>
+                    <div class="stat-card blue">
+                        <div class="stat-icon"><i class="fas fa-chart-line"></i></div>
+                        <div class="stat-info">
+                            <span class="stat-label">Total Earned</span>
+                            <span class="stat-value" id="stat-earned">0</span>
+                        </div>
+                    </div>
+                    <div class="stat-card orange">
+                        <div class="stat-icon"><i class="fas fa-arrow-up"></i></div>
+                        <div class="stat-info">
+                            <span class="stat-label">Total Sent</span>
+                            <span class="stat-value" id="stat-sent">0</span>
+                        </div>
+                    </div>
+                    <div class="stat-card purple">
+                        <div class="stat-icon"><i class="fas fa-arrow-down"></i></div>
+                        <div class="stat-info">
+                            <span class="stat-label">Total Received</span>
+                            <span class="stat-value" id="stat-received">0</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="quick-actions">
+                    <h3>Quick Actions</h3>
+                    <div class="action-buttons">
+                        <button class="action-btn" onclick="switchTab('send')">
+                            <i class="fas fa-paper-plane"></i>
+                            Send Credits
+                        </button>
+                        <button class="action-btn" onclick="switchTab('friends')">
+                            <i class="fas fa-user-plus"></i>
+                            Add Friend
+                        </button>
+                        <button class="action-btn" onclick="switchTab('leaderboard')">
+                            <i class="fas fa-trophy"></i>
+                            Leaderboard
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Send Credits Tab -->
+            <div id="tab-send" class="tab-content">
+                <h2><i class="fas fa-paper-plane"></i> Send Credits</h2>
+                <div id="admin-send-notice" class="admin-notice" style="display:none;">
+                    <i class="fas fa-shield-alt"></i>
+                    Admin Mode: You can send to any user!
+                </div>
+                
+                <div class="card">
+                    <div class="form-group">
+                        <label>Recipient Username</label>
+                        <input type="text" id="send-username" placeholder="Enter username">
+                    </div>
+                    <div class="form-group">
+                        <label>Amount</label>
+                        <input type="number" id="send-amount" placeholder="Enter amount" min="1">
+                    </div>
+                    <button class="btn-primary" onclick="sendCredits()">Send Credits</button>
+                </div>
+            </div>
+            
+            <!-- Friends Tab -->
+            <div id="tab-friends" class="tab-content">
+                <h2><i class="fas fa-users"></i> Friends</h2>
+                
+                <div class="card">
+                    <h3>Add Friend</h3>
+                    <div class="input-group">
+                        <input type="text" id="add-friend-input" placeholder="Enter username">
+                        <button class="btn-primary" onclick="addFriend()">Send Request</button>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <h3>Pending Requests <span id="pending-count" class="badge">0</span></h3>
+                    <div id="pending-list" class="user-list"></div>
+                </div>
+                
+                <div class="card">
+                    <h3>Your Friends <span id="friends-count" class="badge">0</span></h3>
+                    <div id="friends-list" class="user-list"></div>
+                </div>
+            </div>
+            
+            <!-- Leaderboard Tab -->
+            <div id="tab-leaderboard" class="tab-content">
+                <h2><i class="fas fa-trophy"></i> Leaderboards</h2>
+                
+                <div class="leaderboard-tabs">
+                    <button class="tab-btn active" onclick="showLeaderboard('global')">🌍 Global</button>
+                    <button class="tab-btn" onclick="showLeaderboard('friends')">👥 Friends</button>
+                </div>
+                
+                <div id="global-leaderboard" class="leaderboard-list active"></div>
+                <div id="friends-leaderboard" class="leaderboard-list"></div>
+            </div>
+            
+            <!-- History Tab -->
+            <div id="tab-history" class="tab-content">
+                <h2><i class="fas fa-history"></i> Transaction History</h2>
+                <div id="history-list" class="history-list"></div>
+            </div>
+            
+            <!-- Earn Tab -->
+            <div id="tab-earn" class="tab-content">
+                <h2><i class="fas fa-coins"></i> Earn Credits</h2>
+                
+                <div class="task-card">
+                    <div class="task-icon"><i class="fas fa-clipboard-check"></i></div>
+                    <h3 id="task-name">Available Task</h3>
+                    <p class="task-reward">Reward: <span id="task-reward">0</span> credits</p>
+                    <button class="btn-primary" onclick="completeTask()">Complete Task</button>
+                    <button class="btn-secondary" onclick="newTask()">New Task</button>
+                </div>
+            </div>
+            
+            <!-- Daily Reward Tab -->
+            <div id="tab-daily" class="tab-content">
+                <h2><i class="fas fa-gift"></i> Daily Reward</h2>
+                
+                <div class="reward-card">
+                    <div class="reward-icon">🎁</div>
+                    <h3>Daily Login Reward</h3>
+                    <div class="reward-amount">50 Credits</div>
+                    <p>Claim once per day!</p>
+                    <button id="claim-btn" class="btn-primary" onclick="claimDaily()">Claim Reward</button>
+                </div>
+            </div>
+            
+            <!-- Admin Tab -->
+            <div id="tab-admin" class="tab-content">
+                <h2><i class="fas fa-cog"></i> Admin Panel</h2>
+                
+                <div class="admin-tabs">
+                    <button class="tab-btn active" onclick="showAdminTab('give')">💵 Give Credits</button>
+                    <button class="tab-btn" onclick="showAdminTab('set')">📊 Set Balance</button>
+                    <button class="tab-btn" onclick="showAdminTab('users')">👥 All Users</button>
+                </div>
+                
+                <div id="admin-give" class="admin-panel active">
+                    <div class="card">
+                        <div class="form-group">
+                            <label>Target Username</label>
+                            <input type="text" id="admin-give-user" placeholder="Enter username">
+                        </div>
+                        <div class="form-group">
+                            <label>Amount</label>
+                            <input type="number" id="admin-give-amount" placeholder="Enter amount" min="1">
+                        </div>
+                        <button class="btn-primary" onclick="adminGiveCredits()">Give Credits</button>
+                        <button class="btn-success" onclick="adminGiveSelf()">Give to Self</button>
+                    </div>
+                </div>
+                
+                <div id="admin-set" class="admin-panel">
+                    <div class="card">
+                        <div class="form-group">
+                            <label>Target Username</label>
+                            <input type="text" id="admin-set-user" placeholder="Enter username">
+                        </div>
+                        <div class="form-group">
+                            <label>New Balance</label>
+                            <input type="number" id="admin-set-amount" placeholder="Enter balance" min="0">
+                        </div>
+                        <button class="btn-primary" onclick="adminSetBalance()">Set Balance</button>
+                    </div>
+                </div>
+                
+                <div id="admin-users" class="admin-panel">
+                    <div class="card">
+                        <div id="all-users-list" class="user-list"></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+    
+    <script src="app.js"></script>
+</body>
+</html>
