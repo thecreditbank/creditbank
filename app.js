@@ -1,10 +1,17 @@
 // ==================== GITHUB DATABASE ====================
 // Using GitHub as shared database - all users interact!
 
-const GITHUB_TOKEN_DEFAULT = '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';
-const GITHUB_TOKEN = localStorage.getItem('creditbank_github_token') || GITHUB_TOKEN_DEFAULT;
 const GITHUB_REPO = 'thecreditbank/creditbank-data';
 const DB_FILE = 'db.json';
+
+// Token is stored in localStorage, not in code
+function getGithubToken() {
+    return localStorage.getItem('creditbank_github_token') || '';
+}
+
+function setGithubToken(token) {
+    localStorage.setItem('creditbank_github_token', token);
+}
 
 let dbCache = null;
 let dbSha = null;
@@ -16,7 +23,7 @@ async function getDB() {
     try {
         const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${DB_FILE}`, {
             headers: {
-                'Authorization': `token ${GITHUB_TOKEN}`,
+                'Authorization': `token ${getGithubToken()}`,
                 'Accept': 'application/vnd.github.v3+json'
             }
         });
@@ -81,7 +88,7 @@ async function saveDB(db) {
         const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${DB_FILE}`, {
             method: 'PUT',
             headers: {
-                'Authorization': `token ${GITHUB_TOKEN}`,
+                'Authorization': `token ${getGithubToken()}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
@@ -130,16 +137,44 @@ let currentUser = null;
 let userData = null;
 let currentPostId = null; // For modal
 
+// ==================== TOKEN SETUP ====================
+function saveToken() {
+    const input = document.getElementById('token-input');
+    const token = input.value.trim();
+    
+    if (!token || !token.startsWith('ghp_')) {
+        showToast('Please enter a valid GitHub token (starts with ghp_)', 'error');
+        return;
+    }
+    
+    setGithubToken(token);
+    showToast('Token saved! You can now login or register.', 'success');
+    document.getElementById('token-setup').style.display = 'none';
+    
+    // Refresh database with new token
+    dbCache = null;
+    dbSha = null;
+}
+
 // ==================== INITIALIZATION ====================
 document.addEventListener('DOMContentLoaded', async () => {
-    // Load database from GitHub
-    await reloadDB();
-    
     // Hide admin elements initially
     const adminOnlyNav = document.querySelector('.nav-item.admin-only');
     const adminSendNotice = document.getElementById('admin-send-notice');
     if (adminOnlyNav) adminOnlyNav.style.display = 'none';
     if (adminSendNotice) adminSendNotice.style.display = 'none';
+    
+    // Check if token is set
+    const token = getGithubToken();
+    if (!token) {
+        document.getElementById('token-setup').style.display = 'block';
+        return; // Wait for token before doing anything else
+    }
+    
+    document.getElementById('token-setup').style.display = 'none';
+    
+    // Load database from GitHub
+    await reloadDB();
     
     // Check if already logged in
     const savedUserId = localStorage.getItem('creditbank_user_id');

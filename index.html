@@ -64,6 +64,16 @@
             </form>
             
             <div id="auth-message" class="message"></div>
+            
+            <!-- Token Setup -->
+            <div id="token-setup" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border);">
+                <div class="form-group">
+                    <label>GitHub Token (one-time setup)</label>
+                    <input type="password" id="token-input" placeholder="Paste your GitHub token">
+                </div>
+                <button class="btn-secondary" onclick="saveToken()" style="width:100%;">Save Token & Continue</button>
+                <p style="color: var(--text-secondary); font-size: 12px; margin-top: 10px; text-align: center;">Get one at <a href="https://github.com/settings/tokens" target="_blank" style="color: var(--primary);">github.com/settings/tokens</a> (scope: repo)</p>
+            </div>
         </div>
     </div>
     
