@@ -1050,6 +1050,73 @@ body {
     gap: 6px;
 }
 
+/* ==================== SETUP STEPS ==================== */
+.setup-step {
+    margin-bottom: 20px;
+}
+
+.step-badge {
+    display: inline-block;
+    background: var(--primary);
+    color: white;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 12px;
+}
+
+.step-badge-green {
+    background: var(--success);
+}
+
+.guide-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.guide-step {
+    display: flex;
+    gap: 14px;
+    padding: 16px;
+    background: var(--bg-dark);
+    border-radius: 12px;
+    border: 1px solid var(--border);
+}
+
+.guide-step-number {
+    width: 32px;
+    height: 32px;
+    background: var(--primary);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.guide-step-content {
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.guide-step-content strong {
+    display: block;
+    margin-bottom: 4px;
+    color: var(--text-primary);
+}
+
+.guide-step-content p {
+    color: var(--text-secondary);
+    margin: 0;
+}
+
 /* ==================== MODAL ==================== */
 .modal {
     position: fixed;

@@ -11,11 +11,86 @@
 <body>
     <!-- Login/Register Screen -->
     <div id="auth-screen" class="screen active">
-        <div class="auth-container">
+        <!-- Step 1: Token Setup (shown first) -->
+        <div id="step-token" class="auth-container" style="max-width: 520px;">
             <div class="auth-logo">
                 <i class="fas fa-university"></i>
                 <h1>CreditBank</h1>
                 <p>Your Virtual Banking System</p>
+            </div>
+            
+            <div class="setup-step">
+                <div class="step-badge">Step 1 of 2</div>
+                <h2 style="font-size: 20px; margin-bottom: 8px;">Create a Free Account Key</h2>
+                <p style="color: var(--text-secondary); font-size: 14px; margin-bottom: 24px;">CreditBank uses GitHub to save your data. You need a free "token" (like a password) so the app can save your account and posts. This takes 2 minutes.</p>
+                
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-number">1</div>
+                        <div class="guide-step-content">
+                            <strong>Create a GitHub Account</strong>
+                            <p>Go to <a href="https://github.com/signup" target="_blank" style="color: var(--primary);">github.com/signup</a> and sign up for free. Use any email - you don't need to be a developer.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="guide-step">
+                        <div class="guide-step-number">2</div>
+                        <div class="guide-step-content">
+                            <strong>Go to Token Settings</strong>
+                            <p>Once signed in, go to <a href="https://github.com/settings/tokens" target="_blank" style="color: var(--primary);">github.com/settings/tokens</a></p>
+                        </div>
+                    </div>
+                    
+                    <div class="guide-step">
+                        <div class="guide-step-number">3</div>
+                        <div class="guide-step-content">
+                            <strong>Generate New Token</strong>
+                            <p>Click <strong>"Generate new token"</strong> then <strong>"Generate new token (classic)"</strong></p>
+                        </div>
+                    </div>
+                    
+                    <div class="guide-step">
+                        <div class="guide-step-number">4</div>
+                        <div class="guide-step-content">
+                            <strong>Fill in the Form</strong>
+                            <p><strong>Note:</strong> Type "creditbank"<br>
+                            <strong>Expiration:</strong> Pick "90 days"<br>
+                            <strong>Check the box:</strong> <code style="background: var(--bg-dark); padding: 2px 6px; border-radius: 4px;">repo</code> (full control of private repositories)</p>
+                        </div>
+                    </div>
+                    
+                    <div class="guide-step">
+                        <div class="guide-step-number">5</div>
+                        <div class="guide-step-content">
+                            <strong>Copy Your Token</strong>
+                            <p>Scroll down and click <strong>"Generate token"</strong>. Copy the token that starts with <code style="background: var(--bg-dark); padding: 2px 6px; border-radius: 4px;">ghp_</code> and paste it below.</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-group" style="margin-top: 20px;">
+                    <label>Paste Your Token Here</label>
+                    <input type="password" id="token-input" placeholder="ghp_...">
+                </div>
+                <button class="btn-primary" onclick="saveToken()">Save Token & Continue</button>
+                <div id="auth-message" class="message"></div>
+                
+                <p style="color: var(--text-secondary); font-size: 12px; margin-top: 16px; text-align: center;">
+                    <i class="fas fa-lock"></i> Your token stays in your browser only. We never see it.
+                </p>
+            </div>
+        </div>
+        
+        <!-- Step 2: Login/Register (shown after token is saved) -->
+        <div id="step-login" class="auth-container" style="display: none;">
+            <div class="auth-logo">
+                <i class="fas fa-university"></i>
+                <h1>CreditBank</h1>
+                <p>Your Virtual Banking System</p>
+            </div>
+            
+            <div class="setup-step">
+                <div class="step-badge step-badge-green">Step 2 of 2 - Token Saved!</div>
             </div>
             
             <div class="auth-tabs">
@@ -63,17 +138,11 @@
                 <button type="submit" class="btn-primary">Register</button>
             </form>
             
-            <div id="auth-message" class="message"></div>
+            <div id="login-message" class="message"></div>
             
-            <!-- Token Setup -->
-            <div id="token-setup" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border);">
-                <div class="form-group">
-                    <label>GitHub Token (one-time setup)</label>
-                    <input type="password" id="token-input" placeholder="Paste your GitHub token">
-                </div>
-                <button class="btn-secondary" onclick="saveToken()" style="width:100%;">Save Token & Continue</button>
-                <p style="color: var(--text-secondary); font-size: 12px; margin-top: 10px; text-align: center;">Get one at <a href="https://github.com/settings/tokens" target="_blank" style="color: var(--primary);">github.com/settings/tokens</a> (scope: repo)</p>
-            </div>
+            <button class="btn-secondary" onclick="changeToken()" style="width: 100%; margin-top: 16px;">
+                <i class="fas fa-key"></i> Change Token
+            </button>
         </div>
     </div>
     

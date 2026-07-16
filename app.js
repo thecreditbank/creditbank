@@ -157,17 +157,23 @@ function saveToken() {
     const token = input.value.trim();
     
     if (!token || !token.startsWith('ghp_')) {
-        showToast('Please enter a valid GitHub token (starts with ghp_)', 'error');
+        showMessage('Please enter a valid GitHub token (starts with ghp_)', 'error');
         return;
     }
     
     setGithubToken(token);
-    showToast('Token saved! You can now login or register.', 'success');
-    document.getElementById('token-setup').style.display = 'none';
     
-    // Refresh database with new token
-    dbCache = null;
-    dbSha = null;
+    // Switch to login step
+    document.getElementById('step-token').style.display = 'none';
+    document.getElementById('step-login').style.display = 'block';
+    
+    showToast('Token saved! Now create your account or login.', 'success');
+}
+
+function changeToken() {
+    document.getElementById('step-login').style.display = 'none';
+    document.getElementById('step-token').style.display = 'block';
+    document.getElementById('token-input').value = '';
 }
 
 // ==================== INITIALIZATION ====================
@@ -180,25 +186,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Check if token is set
     const token = getGithubToken();
-    if (!token) {
-        document.getElementById('token-setup').style.display = 'block';
-        return; // Wait for token before doing anything else
-    }
-    
-    document.getElementById('token-setup').style.display = 'none';
-    
-    // Load database from GitHub
-    await reloadDB();
-    
-    // Check if already logged in
-    const savedUserId = localStorage.getItem('creditbank_user_id');
-    if (savedUserId) {
-        const db = await getDB();
-        if (db.users[savedUserId]) {
-            currentUser = savedUserId;
-            userData = db.users[savedUserId];
-            showDashboard();
+    if (token) {
+        // Token exists - show login step
+        document.getElementById('step-token').style.display = 'none';
+        document.getElementById('step-login').style.display = 'block';
+        
+        // Try to auto-login
+        await reloadDB();
+        const savedUserId = localStorage.getItem('creditbank_user_id');
+        if (savedUserId) {
+            const db = await getDB();
+            if (db.users[savedUserId]) {
+                currentUser = savedUserId;
+                userData = db.users[savedUserId];
+                showDashboard();
+                return;
+            }
         }
+    } else {
+        // No token - show token setup step
+        document.getElementById('step-token').style.display = 'block';
+        document.getElementById('step-login').style.display = 'none';
     }
     
     // Setup form handlers
@@ -1244,13 +1252,25 @@ function showToast(message, type = 'success') {
 }
 
 function showMessage(message, type) {
-    const msgEl = document.getElementById('auth-message');
-    msgEl.textContent = message;
-    msgEl.className = `message ${type}`;
+    // Try both message elements
+    let msgEl = document.getElementById('login-message');
+    if (msgEl) {
+        msgEl.textContent = message;
+        msgEl.className = `message ${type}`;
+    }
+    // Also try auth-message for token step
+    let tokenMsg = document.getElementById('auth-message');
+    if (tokenMsg) {
+        tokenMsg.textContent = message;
+        tokenMsg.className = `message ${type}`;
+    }
 }
 
 function clearMessage() {
-    document.getElementById('auth-message').className = 'message';
+    const msgEl = document.getElementById('login-message');
+    if (msgEl) msgEl.className = 'message';
+    const tokenMsg = document.getElementById('auth-message');
+    if (tokenMsg) tokenMsg.className = 'message';
 }
 
 function validatePassword(password) {
