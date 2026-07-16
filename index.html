@@ -105,13 +105,9 @@
                     <i class="fas fa-history"></i>
                     <span>History</span>
                 </li>
-                <li class="nav-item" data-tab="earn">
-                    <i class="fas fa-coins"></i>
-                    <span>Earn Credits</span>
-                </li>
-                <li class="nav-item" data-tab="daily">
-                    <i class="fas fa-gift"></i>
-                    <span>Daily Reward</span>
+                <li class="nav-item" data-tab="feed">
+                    <i class="fas fa-newspaper"></i>
+                    <span>Feed</span>
                 </li>
                 <li class="nav-item admin-only" data-tab="admin" style="display:none;">
                     <i class="fas fa-cog"></i>
@@ -244,30 +240,19 @@
                 <div id="history-list" class="history-list"></div>
             </div>
             
-            <!-- Earn Tab -->
-            <div id="tab-earn" class="tab-content">
-                <h2><i class="fas fa-coins"></i> Earn Credits</h2>
+            <!-- Feed Tab -->
+            <div id="tab-feed" class="tab-content">
+                <h2><i class="fas fa-newspaper"></i> Public Feed</h2>
                 
-                <div class="task-card">
-                    <div class="task-icon"><i class="fas fa-clipboard-check"></i></div>
-                    <h3 id="task-name">Available Task</h3>
-                    <p class="task-reward">Reward: <span id="task-reward">0</span> credits</p>
-                    <button class="btn-primary" onclick="completeTask()">Complete Task</button>
-                    <button class="btn-secondary" onclick="newTask()">New Task</button>
+                <div class="card">
+                    <h3>Create a Post</h3>
+                    <div class="form-group">
+                        <textarea id="post-content" placeholder="What's on your mind?" rows="3"></textarea>
+                    </div>
+                    <button class="btn-primary" onclick="createPost()">Post</button>
                 </div>
-            </div>
-            
-            <!-- Daily Reward Tab -->
-            <div id="tab-daily" class="tab-content">
-                <h2><i class="fas fa-gift"></i> Daily Reward</h2>
                 
-                <div class="reward-card">
-                    <div class="reward-icon">🎁</div>
-                    <h3>Daily Login Reward</h3>
-                    <div class="reward-amount">50 Credits</div>
-                    <p>Claim once per day!</p>
-                    <button id="claim-btn" class="btn-primary" onclick="claimDaily()">Claim Reward</button>
-                </div>
+                <div id="posts-feed"></div>
             </div>
             
             <!-- Admin Tab -->
@@ -316,6 +301,55 @@
                 </div>
             </div>
         </main>
+    </div>
+    
+    <!-- Post Modal -->
+    <div id="post-modal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-post-author">Post by User</h3>
+                <button class="modal-close" onclick="closePostModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="modal-post-content" class="modal-post-text"></p>
+                <span id="modal-post-time" class="modal-post-time"></span>
+                
+                <div class="modal-actions">
+                    <button class="action-btn" onclick="showCommentInput()">
+                        <i class="fas fa-comment"></i> Comment
+                    </button>
+                    <button class="action-btn" onclick="viewComments()">
+                        <i class="fas fa-comments"></i> View Comments
+                    </button>
+                    <button class="action-btn" onclick="showDonateInput()">
+                        <i class="fas fa-donate"></i> Donate Credits
+                    </button>
+                </div>
+                
+                <!-- Comment Input -->
+                <div id="comment-input-section" style="display:none;" class="modal-section">
+                    <div class="input-group">
+                        <input type="text" id="comment-input" placeholder="Write a comment...">
+                        <button class="btn-primary btn-small" onclick="submitComment()">Post</button>
+                    </div>
+                </div>
+                
+                <!-- Comments List -->
+                <div id="comments-section" style="display:none;" class="modal-section">
+                    <h4>Comments</h4>
+                    <div id="comments-list"></div>
+                </div>
+                
+                <!-- Donate Input -->
+                <div id="donate-input-section" style="display:none;" class="modal-section">
+                    <div class="form-group">
+                        <label>Amount to donate</label>
+                        <input type="number" id="donate-amount" placeholder="Enter amount" min="1">
+                    </div>
+                    <button class="btn-success" onclick="submitDonate()">Donate</button>
+                </div>
+            </div>
+        </div>
     </div>
     
     <!-- Toast Notification -->

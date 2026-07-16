@@ -96,23 +96,7 @@ function hashPassword(password) {
 // ==================== GLOBAL VARIABLES ====================
 let currentUser = null;
 let userData = null;
-
-// ==================== TASKS ====================
-const tasks = [
-    { name: "Complete a survey", reward: 25 },
-    { name: "Watch an ad", reward: 10 },
-    { name: "Refer a friend", reward: 100 },
-    { name: "Share on social media", reward: 15 },
-    { name: "Play a mini-game", reward: 20 },
-    { name: "Read an article", reward: 5 },
-    { name: "Complete a quiz", reward: 30 },
-    { name: "Watch a tutorial", reward: 12 },
-    { name: "Rate an app", reward: 8 },
-    { name: "Join a challenge", reward: 35 }
-];
-
-let currentTask = null;
-let completedTaskIndices = [];
+let currentPostId = null; // For modal
 
 // ==================== INITIALIZATION ====================
 document.addEventListener('DOMContentLoaded', async () => {
@@ -149,11 +133,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             switchTab(item.dataset.tab);
         });
     });
-    
-    // Display current task will be done in showDashboard after login
-    // For now, just show a placeholder
-    document.getElementById('task-name').textContent = 'Login to see available tasks';
-    document.getElementById('task-reward').textContent = '--';
 });
 
 // ==================== AUTH FUNCTIONS ====================
@@ -299,17 +278,11 @@ async function showDashboard() {
     if (adminOnlyNav) adminOnlyNav.style.display = 'none';
     if (adminSendNotice) adminSendNotice.style.display = 'none';
     
-    // Load completed tasks for this user
-    loadCompletedTasks();
-    
-    // Get first available task
-    currentTask = getRandomTask();
-    displayTask();
-    
     updateUI();
     await loadFriends();
     await loadLeaderboard();
     await loadHistory();
+    await loadFeed();
 }
 
 function updateUI() {
@@ -351,6 +324,7 @@ function switchTab(tab) {
     if (tab === 'leaderboard') loadLeaderboard();
     if (tab === 'history') loadHistory();
     if (tab === 'admin') loadAdminData();
+    if (tab === 'feed') loadFeed();
 }
 
 // ==================== SEND CREDITS ====================
@@ -674,131 +648,271 @@ async function loadHistory() {
     });
 }
 
-// ==================== EARN CREDITS ====================
-function getRandomTask() {
-    // Filter out completed tasks
-    const availableTasks = tasks.filter((_, index) => !completedTaskIndices.includes(index));
-    
-    if (availableTasks.length === 0) {
-        return null; // All tasks completed
-    }
-    
-    const randomIndex = Math.floor(Math.random() * availableTasks.length);
-    const task = availableTasks[randomIndex];
-    const taskIndex = tasks.indexOf(task);
-    
-    return { ...task, index: taskIndex };
-}
+// ==================== FEED / POSTS ====================
+let currentModalPostId = null;
 
-function displayTask() {
-    const taskNameEl = document.getElementById('task-name');
-    const taskRewardEl = document.getElementById('task-reward');
-    const completeBtn = document.querySelector('#tab-earn .btn-primary');
-    const newTaskBtn = document.querySelector('#tab-earn .btn-secondary');
+async function loadFeed() {
+    const db = await getDB();
     
-    if (!currentTask) {
-        taskNameEl.textContent = 'All Tasks Completed!';
-        taskRewardEl.textContent = 'No more tasks available';
-        completeBtn.style.display = 'none';
-        newTaskBtn.style.display = 'none';
+    const posts = (db.posts || []).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    const feedEl = document.getElementById('posts-feed');
+    feedEl.innerHTML = '';
+    
+    if (posts.length === 0) {
+        feedEl.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 40px;">No posts yet. Be the first to post!</p>';
         return;
     }
     
-    taskNameEl.textContent = currentTask.name;
-    taskRewardEl.textContent = currentTask.reward;
-    completeBtn.style.display = 'block';
-    newTaskBtn.style.display = 'block';
+    posts.forEach(post => {
+        const author = db.users[post.authorId];
+        if (!author) return;
+        
+        const commentCount = (db.comments || []).filter(c => c.postId === post.id).length;
+        const timeAgo = getTimeAgo(post.createdAt);
+        const adminTag = author.isAdmin ? '<span class="admin-tag" style="color: var(--warning); font-size: 11px; margin-left: 6px;">(admin)</span>' : '';
+        
+        feedEl.innerHTML += `
+            <div class="post-card" onclick="openPost('${post.id}')">
+                <div class="post-header">
+                    <div class="post-avatar">${author.username[0].toUpperCase()}</div>
+                    <div class="post-author-info">
+                        <span class="post-author-name">${author.username}${adminTag}</span>
+                        <span class="post-time">${timeAgo}</span>
+                    </div>
+                </div>
+                <div class="post-content">${escapeHtml(post.content)}</div>
+                <div class="post-stats">
+                    <span class="post-stat"><i class="fas fa-comment"></i> ${commentCount} comment${commentCount !== 1 ? 's' : ''}</span>
+                    <span class="post-stat"><i class="fas fa-donate"></i> Donate credits</span>
+                </div>
+            </div>
+        `;
+    });
 }
 
-function newTask() {
-    currentTask = getRandomTask();
-    displayTask();
-}
-
-async function completeTask() {
-    if (!currentTask) return;
+async function createPost() {
+    const content = document.getElementById('post-content').value.trim();
+    
+    if (!content) {
+        showToast('Please write something!', 'error');
+        return;
+    }
+    
+    if (content.length > 500) {
+        showToast('Post too long! Max 500 characters.', 'error');
+        return;
+    }
     
     const db = await getDB();
     
-    // Add credits
-    db.users[currentUser].balance += currentTask.reward;
-    db.users[currentUser].totalEarned += currentTask.reward;
+    if (!db.posts) db.posts = [];
     
-    // Mark task as completed
-    if (!db.users[currentUser].completedTasks) {
-        db.users[currentUser].completedTasks = [];
-    }
-    if (!db.users[currentUser].completedTasks.includes(currentTask.index)) {
-        db.users[currentUser].completedTasks.push(currentTask.index);
+    const newPost = {
+        id: 'post_' + Date.now(),
+        authorId: currentUser,
+        content: content,
+        createdAt: new Date().toISOString()
+    };
+    
+    db.posts.push(newPost);
+    
+    await saveDB(db);
+    
+    document.getElementById('post-content').value = '';
+    showToast('Post created!', 'success');
+    await loadFeed();
+}
+
+function openPost(postId) {
+    currentModalPostId = postId;
+    
+    // Hide all sections
+    document.getElementById('comment-input-section').style.display = 'none';
+    document.getElementById('comments-section').style.display = 'none';
+    document.getElementById('donate-input-section').style.display = 'none';
+    
+    // Show modal
+    document.getElementById('post-modal').style.display = 'flex';
+    
+    loadPostModal();
+}
+
+async function loadPostModal() {
+    const db = await getDB();
+    const post = (db.posts || []).find(p => p.id === currentModalPostId);
+    
+    if (!post) {
+        closePostModal();
+        return;
     }
     
-    // Add transaction
+    const author = db.users[post.authorId];
+    if (!author) {
+        closePostModal();
+        return;
+    }
+    
+    document.getElementById('modal-post-author').textContent = `Post by ${author.username}`;
+    document.getElementById('modal-post-content').textContent = post.content;
+    document.getElementById('modal-post-time').textContent = getTimeAgo(post.createdAt);
+}
+
+function closePostModal() {
+    document.getElementById('post-modal').style.display = 'none';
+    currentModalPostId = null;
+}
+
+function showCommentInput() {
+    document.getElementById('comment-input-section').style.display = 'block';
+    document.getElementById('comments-section').style.display = 'none';
+    document.getElementById('donate-input-section').style.display = 'none';
+    document.getElementById('comment-input').value = '';
+    document.getElementById('comment-input').focus();
+}
+
+async function submitComment() {
+    const content = document.getElementById('comment-input').value.trim();
+    
+    if (!content) {
+        showToast('Please write a comment!', 'error');
+        return;
+    }
+    
+    const db = await getDB();
+    
+    if (!db.comments) db.comments = [];
+    
+    const newComment = {
+        id: 'comment_' + Date.now(),
+        postId: currentModalPostId,
+        authorId: currentUser,
+        content: content,
+        createdAt: new Date().toISOString()
+    };
+    
+    db.comments.push(newComment);
+    await saveDB(db);
+    
+    document.getElementById('comment-input').value = '';
+    showToast('Comment posted!', 'success');
+    
+    // Refresh comments view
+    viewComments();
+}
+
+async function viewComments() {
+    document.getElementById('comment-input-section').style.display = 'none';
+    document.getElementById('comments-section').style.display = 'block';
+    document.getElementById('donate-input-section').style.display = 'none';
+    
+    const db = await getDB();
+    const comments = (db.comments || [])
+        .filter(c => c.postId === currentModalPostId)
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    
+    const commentsList = document.getElementById('comments-list');
+    
+    if (comments.length === 0) {
+        commentsList.innerHTML = '<p class="no-comments">No comments yet. Be the first!</p>';
+        return;
+    }
+    
+    commentsList.innerHTML = '';
+    
+    comments.forEach(comment => {
+        const author = db.users[comment.authorId];
+        if (!author) return;
+        
+        commentsList.innerHTML += `
+            <div class="comment-item">
+                <div class="comment-avatar">${author.username[0].toUpperCase()}</div>
+                <div class="comment-body">
+                    <div class="comment-author">${author.username}</div>
+                    <div class="comment-text">${escapeHtml(comment.content)}</div>
+                    <div class="comment-time">${getTimeAgo(comment.createdAt)}</div>
+                </div>
+            </div>
+        `;
+    });
+}
+
+function showDonateInput() {
+    document.getElementById('comment-input-section').style.display = 'none';
+    document.getElementById('comments-section').style.display = 'none';
+    document.getElementById('donate-input-section').style.display = 'block';
+    document.getElementById('donate-amount').value = '';
+    document.getElementById('donate-amount').focus();
+}
+
+async function submitDonate() {
+    const amount = parseInt(document.getElementById('donate-amount').value);
+    
+    if (!amount || amount <= 0) {
+        showToast('Enter a valid amount!', 'error');
+        return;
+    }
+    
+    const db = await getDB();
+    const post = (db.posts || []).find(p => p.id === currentModalPostId);
+    
+    if (!post) {
+        showToast('Post not found!', 'error');
+        return;
+    }
+    
+    const recipientId = post.authorId;
+    
+    if (recipientId === currentUser) {
+        showToast("You can't donate to yourself!", 'error');
+        return;
+    }
+    
+    if (userData.balance < amount) {
+        showToast('Insufficient balance!', 'error');
+        return;
+    }
+    
+    // Transfer credits
+    db.users[currentUser].balance -= amount;
+    db.users[currentUser].totalSent += amount;
+    db.users[recipientId].balance += amount;
+    db.users[recipientId].totalReceived += amount;
+    
+    const recipient = db.users[recipientId];
+    
     db.transactions.push({
-        toUserId: currentUser,
-        amount: currentTask.reward,
-        type: 'task',
-        description: `Task: ${currentTask.name}`,
+        fromUserId: currentUser,
+        toUserId: recipientId,
+        amount: amount,
+        type: 'donate',
+        description: `Donation to ${recipient.username}'s post`,
         createdAt: new Date().toISOString()
     });
     
     await saveDB(db);
     userData = db.users[currentUser];
-    completedTaskIndices = userData.completedTasks || [];
     
-    showToast(`Earned ${currentTask.reward} credits!`, 'success');
+    showToast(`Donated ${amount} credits to ${recipient.username}!`, 'success');
+    document.getElementById('donate-amount').value = '';
     updateUI();
-    
-    // Get next task
-    currentTask = getRandomTask();
-    displayTask();
 }
 
-// Load completed tasks when user logs in
-function loadCompletedTasks() {
-    if (userData && userData.completedTasks) {
-        completedTaskIndices = userData.completedTasks;
-    } else {
-        completedTaskIndices = [];
-    }
+function getTimeAgo(dateString) {
+    const now = new Date();
+    const date = new Date(dateString);
+    const seconds = Math.floor((now - date) / 1000);
+    
+    if (seconds < 60) return 'just now';
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+    if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
+    return date.toLocaleDateString();
 }
 
-// ==================== DAILY REWARD ====================
-async function claimDaily() {
-    const today = new Date().toISOString().split('T')[0];
-    const db = await getDB();
-    
-    const claimed = db.dailyRewards.some(r => r.userId === currentUser && r.date === today && r.claimed);
-    
-    if (claimed) {
-        showToast('Already claimed today!', 'error');
-        return;
-    }
-    
-    db.users[currentUser].balance += 50;
-    db.users[currentUser].totalEarned += 50;
-    
-    db.transactions.push({
-        toUserId: currentUser,
-        amount: 50,
-        type: 'reward',
-        description: 'Daily login reward',
-        createdAt: new Date().toISOString()
-    });
-    
-    db.dailyRewards.push({
-        userId: currentUser,
-        date: today,
-        claimed: true
-    });
-    
-    await saveDB(db);
-    userData = db.users[currentUser];
-    
-    showToast('Claimed 50 daily credits!', 'success');
-    updateUI();
-    
-    document.getElementById('claim-btn').disabled = true;
-    document.getElementById('claim-btn').textContent = 'Already Claimed';
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 // ==================== ADMIN FUNCTIONS ====================
