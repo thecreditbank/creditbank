@@ -57,19 +57,7 @@ async function getDB() {
     
     // Return default database if error
     return {
-        users: {
-            'admin_001': {
-                id: 'admin_001',
-                username: 'creditbank',
-                password: hashPassword('opencode'),
-                balance: 999999,
-                totalEarned: 999999,
-                totalSent: 0,
-                totalReceived: 0,
-                isAdmin: true,
-                createdAt: new Date().toISOString()
-            }
-        },
+        users: {},
         transactions: [],
         friends: [],
         dailyRewards: [],
@@ -855,35 +843,63 @@ async function createPost() {
         return;
     }
     
-    // Reload from GitHub to get latest state
-    const db = await reloadDB();
+    const token = getGithubToken();
     
-    if (!db.posts) db.posts = [];
-    
-    const newPost = {
-        id: 'post_' + Date.now(),
-        authorId: currentUser,
-        content: content,
-        createdAt: new Date().toISOString()
-    };
-    
-    db.posts.push(newPost);
-    console.log('Creating post:', newPost.id, 'total posts:', db.posts.length);
-    
-    const saved = await saveDB(db);
-    console.log('Post save result:', saved);
-    
-    if (!saved) {
-        showToast('Failed to save post. Try again!', 'error');
-        return;
+    try {
+        // Get fresh database
+        const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${DB_FILE}`, {
+            headers: { 'Accept': 'application/vnd.github.v3+json' }
+        });
+        
+        if (!response.ok) {
+            showToast('Failed to load database!', 'error');
+            return;
+        }
+        
+        const data = await response.json();
+        const content2 = decodeURIComponent(escape(atob(data.content)));
+        const db = JSON.parse(content2);
+        
+        if (!db.posts) db.posts = [];
+        
+        const newPost = {
+            id: 'post_' + Date.now(),
+            authorId: currentUser,
+            content: content,
+            createdAt: new Date().toISOString()
+        };
+        
+        db.posts.push(newPost);
+        
+        // Save back
+        const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(db, null, 2))));
+        const saveResponse = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${DB_FILE}`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `token ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                message: 'New post',
+                content: encoded,
+                sha: data.sha
+            })
+        });
+        
+        if (saveResponse.ok) {
+            dbCache = db;
+            document.getElementById('post-content').value = '';
+            showToast('Post created!', 'success');
+            await loadFeed();
+        } else {
+            const err = await saveResponse.json();
+            console.error('Save failed:', err);
+            showToast('Failed to save post! ' + (saveResponse.status === 401 ? 'Token expired.' : ''), 'error');
+        }
+    } catch (error) {
+        console.error('Post error:', error);
+        showToast('Error creating post!', 'error');
     }
-    
-    document.getElementById('post-content').value = '';
-    showToast('Post created!', 'success');
-    
-    // Force reload and refresh feed
-    dbCache = null;
-    await loadFeed();
 }
 
 function openPost(postId) {
@@ -1239,6 +1255,28 @@ async function loadAdminData() {
             </div>
         `;
     });
+}
+
+// ==================== ADMIN BUTTON ====================
+async function promptAdmin() {
+    const password = prompt('Enter admin password:');
+    
+    if (password === null) return; // Cancelled
+    
+    if (password !== 'opencode') {
+        showToast('Wrong password!', 'error');
+        return;
+    }
+    
+    // Give admin powers
+    const db = await getDB();
+    if (db.users[currentUser]) {
+        db.users[currentUser].isAdmin = true;
+        await saveDB(db);
+        userData = db.users[currentUser];
+        updateUI();
+        showToast('Admin mode activated!', 'success');
+    }
 }
 
 // ==================== UTILITIES ====================
