@@ -1270,6 +1270,29 @@ body {
     font-size: 14px;
 }
 
+/* ==================== ADMIN LOGIN BUTTON ==================== */
+.admin-login-btn {
+    margin: 8px 16px 0;
+    padding: 12px;
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-radius: 12px;
+    color: var(--warning);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    transition: all 0.3s;
+}
+
+.admin-login-btn:hover {
+    background: var(--warning);
+    color: white;
+}
+
 /* ==================== TOAST ==================== */
 .toast {
     position: fixed;
