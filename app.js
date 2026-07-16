@@ -1,10 +1,14 @@
 // ==================== GITHUB DATABASE ====================
 // Using GitHub as shared database - all users interact!
+// Public repo = reads work without token
+// Writes need a token stored in localStorage
 
 const GITHUB_REPO = 'thecreditbank/creditbank-data';
 const DB_FILE = 'db.json';
 
-// Token is stored in localStorage, not in code
+let dbCache = null;
+let dbSha = null;
+
 function getGithubToken() {
     return localStorage.getItem('creditbank_github_token') || '';
 }
@@ -13,17 +17,23 @@ function setGithubToken(token) {
     localStorage.setItem('creditbank_github_token', token);
 }
 
-let dbCache = null;
-let dbSha = null;
+function requireToken() {
+    if (!getGithubToken()) {
+        showToast('You need a GitHub token to do this! Scroll down on login page to set one up.', 'error');
+        document.getElementById('token-setup').style.display = 'block';
+        return false;
+    }
+    return true;
+}
 
 // ==================== DATABASE FUNCTIONS ====================
 async function getDB() {
     if (dbCache) return dbCache;
     
     try {
+        // Public repo - no token needed for reading
         const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${DB_FILE}`, {
             headers: {
-                'Authorization': `token ${getGithubToken()}`,
                 'Accept': 'application/vnd.github.v3+json'
             }
         });
@@ -68,7 +78,6 @@ async function getDB() {
     };
 }
 
-// Force reload the database from GitHub
 async function reloadDB() {
     dbCache = null;
     dbSha = null;
@@ -76,11 +85,16 @@ async function reloadDB() {
 }
 
 async function saveDB(db) {
+    const token = getGithubToken();
+    if (!token) {
+        console.error('No token - cannot save');
+        return false;
+    }
+    
     try {
         const content = JSON.stringify(db, null, 2);
         const encodedContent = btoa(unescape(encodeURIComponent(content)));
         
-        // Make sure we have the latest sha
         if (!dbSha) {
             await reloadDB();
         }
@@ -88,7 +102,7 @@ async function saveDB(db) {
         const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${DB_FILE}`, {
             method: 'PUT',
             headers: {
-                'Authorization': `token ${getGithubToken()}`,
+                'Authorization': `token ${token}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
@@ -102,16 +116,16 @@ async function saveDB(db) {
             const data = await response.json();
             dbSha = data.content.sha;
             dbCache = db;
-            console.log('Database saved successfully');
             return true;
         } else {
-            const errorData = await response.json();
-            console.error('Save failed:', response.status, errorData);
-            // If sha mismatch, reload and try again
+            console.error('Save failed:', response.status);
+            if (response.status === 401) {
+                showToast('Token expired! Get a new one at github.com/settings/tokens', 'error');
+                localStorage.removeItem('creditbank_github_token');
+                document.getElementById('token-setup').style.display = 'block';
+            }
             if (response.status === 422 || response.status === 409) {
-                console.log('SHA mismatch, reloading database...');
                 await reloadDB();
-                // Merge changes into fresh db and retry
                 Object.assign(dbCache, db);
                 return await saveDB(dbCache);
             }
@@ -264,6 +278,9 @@ async function handleLogin(e) {
 
 async function handleRegister(e) {
     e.preventDefault();
+    
+    if (!requireToken()) return;
+    
     const username = document.getElementById('reg-username').value.trim();
     const password = document.getElementById('reg-password').value;
     const confirm = document.getElementById('reg-confirm').value;
@@ -435,6 +452,8 @@ function switchTab(tab) {
 
 // ==================== SEND CREDITS ====================
 async function sendCredits() {
+    if (!requireToken()) return;
+    
     const recipient = document.getElementById('send-username').value.trim();
     const amount = parseInt(document.getElementById('send-amount').value);
     
@@ -578,6 +597,8 @@ async function loadFriends() {
 }
 
 async function addFriend() {
+    if (!requireToken()) return;
+    
     const input = document.getElementById('add-friend-input');
     const target = input.value.trim();
     
@@ -807,6 +828,8 @@ async function loadFeed() {
 }
 
 async function createPost() {
+    if (!requireToken()) return;
+    
     const content = document.getElementById('post-content').value.trim();
     
     if (!content) {
@@ -898,6 +921,8 @@ function showCommentInput() {
 }
 
 async function submitComment() {
+    if (!requireToken()) return;
+    
     const content = document.getElementById('comment-input').value.trim();
     
     if (!content) {
@@ -979,6 +1004,8 @@ function showDonateInput() {
 }
 
 async function submitDonate() {
+    if (!requireToken()) return;
+    
     const amount = parseInt(document.getElementById('donate-amount').value);
     
     if (!amount || amount <= 0) {
