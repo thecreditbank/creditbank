@@ -1,48 +1,31 @@
-// ==================== GITHUB DATABASE ====================
-// Using GitHub as shared database - all users interact!
-// Public repo = reads work without token
-// Writes need a token stored in localStorage
+// ==================== DATABASE VIA CLOUDFLARE WORKER ====================
+// All reads/writes go through our Cloudflare Worker proxy
+// No token needed for users — the Worker holds the secret!
 
-const GITHUB_REPO = 'thecreditbank/creditbank-data';
-const DB_FILE = 'db.json';
+const WORKER_URL = 'https://creditbank-api.ejrecess.workers.dev';
 
 let dbCache = null;
 let dbSha = null;
 
-function getGithubToken() {
-    return localStorage.getItem('creditbank_github_token') || '';
-}
-
-function setGithubToken(token) {
-    localStorage.setItem('creditbank_github_token', token);
-}
-
-function requireToken() {
-    if (!getGithubToken()) {
-        showToast('You need a GitHub token to do this! Scroll down on login page to set one up.', 'error');
-        document.getElementById('token-setup').style.display = 'block';
-        return false;
-    }
-    return true;
-}
+function getGithubToken() { return ''; }
+function setGithubToken(token) { }
+function requireToken() { return true; }
 
 // ==================== DATABASE FUNCTIONS ====================
 async function getDB() {
     if (dbCache) return dbCache;
     
     try {
-        // Public repo - no token needed for reading
-        const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${DB_FILE}`, {
-            headers: {
-                'Accept': 'application/vnd.github.v3+json'
-            }
+        const response = await fetch(WORKER_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'read' })
         });
         
         if (response.ok) {
             const data = await response.json();
             dbSha = data.sha;
-            const content = decodeURIComponent(escape(atob(data.content)));
-            dbCache = JSON.parse(content);
+            dbCache = data.content;
             // Ensure arrays exist
             if (!dbCache.posts) dbCache.posts = [];
             if (!dbCache.comments) dbCache.comments = [];
@@ -74,46 +57,30 @@ async function reloadDB() {
 }
 
 async function saveDB(db) {
-    const token = getGithubToken();
-    if (!token) {
-        console.error('No token - cannot save');
-        return false;
-    }
-    
     try {
-        const content = JSON.stringify(db, null, 2);
-        const encodedContent = btoa(unescape(encodeURIComponent(content)));
-        
         if (!dbSha) {
             await reloadDB();
         }
         
-        const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${DB_FILE}`, {
-            method: 'PUT',
-            headers: {
-                'Authorization': `token ${token}`,
-                'Content-Type': 'application/json'
-            },
+        const response = await fetch(WORKER_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                message: 'Update CreditBank database',
-                content: encodedContent,
-                sha: dbSha
+                action: 'write',
+                content: db,
+                sha: dbSha,
+                message: 'Update CreditBank database'
             })
         });
         
         if (response.ok) {
             const data = await response.json();
-            dbSha = data.content.sha;
+            dbSha = data.sha;
             dbCache = db;
             return true;
         } else {
             console.error('Save failed:', response.status);
-            if (response.status === 401) {
-                showToast('Token expired! Get a new one at github.com/settings/tokens', 'error');
-                localStorage.removeItem('creditbank_github_token');
-                document.getElementById('token-setup').style.display = 'block';
-            }
-            if (response.status === 422 || response.status === 409) {
+            if (response.status === 409) {
                 await reloadDB();
                 Object.assign(dbCache, db);
                 return await saveDB(dbCache);
@@ -140,34 +107,15 @@ let currentUser = null;
 let userData = null;
 let currentPostId = null; // For modal
 
-// ==================== TOKEN SETUP ====================
+// ==================== TOKEN SETUP (no longer needed) ====================
 function saveToken() {
-    const input = document.getElementById('token-input');
-    const token = input.value.trim();
-    
-    console.log('Token input:', token ? token.substring(0, 10) + '...' : 'empty');
-    
-    if (!token || !token.startsWith('ghp_')) {
-        console.log('Token validation failed');
-        showMessage('Please enter a valid GitHub token (starts with ghp_)', 'error');
-        return;
-    }
-    
-    console.log('Token valid, saving...');
-    setGithubToken(token);
-    
-    // Switch to login step
+    // Token setup no longer needed - using Cloudflare Worker
     document.getElementById('step-token').style.display = 'none';
     document.getElementById('step-login').style.display = 'block';
-    
-    console.log('Switched to login step');
-    showToast('Token saved! Now create your account or login.', 'success');
 }
 
 function changeToken() {
-    document.getElementById('step-login').style.display = 'none';
-    document.getElementById('step-token').style.display = 'block';
-    document.getElementById('token-input').value = '';
+    // No-op - token setup removed
 }
 
 // ==================== INITIALIZATION ====================
@@ -178,29 +126,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (adminOnlyNav) adminOnlyNav.style.display = 'none';
     if (adminSendNotice) adminSendNotice.style.display = 'none';
     
-    // Check if token is set
-    const token = getGithubToken();
-    if (token) {
-        // Token exists - show login step
-        document.getElementById('step-token').style.display = 'none';
-        document.getElementById('step-login').style.display = 'block';
-        
-        // Try to auto-login
-        await reloadDB();
-        const savedUserId = localStorage.getItem('creditbank_user_id');
-        if (savedUserId) {
-            const db = await getDB();
-            if (db.users[savedUserId]) {
-                currentUser = savedUserId;
-                userData = db.users[savedUserId];
-                showDashboard();
-                return;
-            }
+    // Skip token setup - go straight to login
+    document.getElementById('step-token').style.display = 'none';
+    document.getElementById('step-login').style.display = 'block';
+    
+    // Try to auto-login
+    await reloadDB();
+    const savedUserId = localStorage.getItem('creditbank_user_id');
+    if (savedUserId) {
+        const db = await getDB();
+        if (db.users[savedUserId]) {
+            currentUser = savedUserId;
+            userData = db.users[savedUserId];
+            showDashboard();
+            return;
         }
-    } else {
-        // No token - show token setup step
-        document.getElementById('step-token').style.display = 'block';
-        document.getElementById('step-login').style.display = 'none';
     }
     
     // Setup form handlers
