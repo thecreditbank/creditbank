@@ -203,11 +203,21 @@
                     <i class="fas fa-coins"></i>
                     <span>Coin Flip</span>
                 </li>
+                <li class="nav-item" data-tab="refer">
+                    <i class="fas fa-gift"></i>
+                    <span>Refer & Earn</span>
+                </li>
                 <li class="nav-item admin-only" data-tab="admin" style="display:none;">
                     <i class="fas fa-cog"></i>
                     <span>Admin Panel</span>
                 </li>
             </ul>
+            
+            <!-- Live User Count -->
+            <div class="live-count">
+                <span class="live-dot"></span>
+                <span id="online-count">0</span> online
+            </div>
             
             <button class="admin-login-btn" onclick="promptAdmin()">
                 <i class="fas fa-shield-alt"></i>
@@ -530,6 +540,54 @@
                             <p id="risk-result-amount" style="font-size: 22px; font-weight: 700; margin-bottom: 24px;"></p>
                             <button class="btn-primary" onclick="resetRiskMode()">Play Again</button>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Refer Tab -->
+            <div id="tab-refer" class="tab-content">
+                <h2><i class="fas fa-gift"></i> Refer & Earn</h2>
+                
+                <div class="refer-card">
+                    <div class="refer-icon">🎁</div>
+                    <h3>Invite Friends, Earn Credits!</h3>
+                    <p style="color: var(--text-secondary); margin-bottom: 8px;">Share your referral link with friends. When they sign up, you BOTH get <span style="color: var(--success); font-weight: 700;">200 credits!</span></p>
+                    
+                    <div class="refer-link-box">
+                        <input type="text" id="refer-link" readonly onclick="this.select()">
+                        <button class="btn-primary" onclick="copyReferLink()">
+                            <i class="fas fa-copy"></i> Copy
+                        </button>
+                    </div>
+                    
+                    <div class="refer-stats">
+                        <div class="refer-stat">
+                            <div class="refer-stat-number" id="refer-count">0</div>
+                            <div class="refer-stat-label">Referrals</div>
+                        </div>
+                        <div class="refer-stat">
+                            <div class="refer-stat-number" id="refer-earned">0</div>
+                            <div class="refer-stat-label">Credits Earned</div>
+                        </div>
+                    </div>
+                    
+                    <div class="refer-share-buttons">
+                        <button class="share-btn share-twitter" onclick="shareRefer('twitter')">
+                            <i class="fab fa-twitter"></i> Twitter
+                        </button>
+                        <button class="share-btn share-discord" onclick="shareRefer('discord')">
+                            <i class="fab fa-discord"></i> Discord
+                        </button>
+                        <button class="share-btn share-whatsapp" onclick="shareRefer('whatsapp')">
+                            <i class="fab fa-whatsapp"></i> WhatsApp
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="card" style="margin-top: 20px;">
+                    <h3><i class="fas fa-users"></i> Your Referrals</h3>
+                    <div id="refer-history">
+                        <p style="color: var(--text-secondary); text-align: center; padding: 20px;">No referrals yet. Share your link!</p>
                     </div>
                 </div>
             </div>
