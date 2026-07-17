@@ -33,6 +33,7 @@ async function getDB() {
             if (!dbCache.friends) dbCache.friends = [];
             if (!dbCache.dailyRewards) dbCache.dailyRewards = [];
             if (!dbCache.coinflip) dbCache.coinflip = { queue: [], active: {} };
+            if (!dbCache.messages) dbCache.messages = [];
             return dbCache;
         }
     } catch (error) {
@@ -46,7 +47,8 @@ async function getDB() {
         friends: [],
         dailyRewards: [],
         posts: [],
-        comments: []
+        comments: [],
+        messages: []
     };
 }
 
@@ -383,6 +385,17 @@ function switchTab(tab) {
         clearInterval(coinflipPollInterval);
         coinflipPollInterval = null;
     }
+    // Stop messenger polling when leaving
+    if (messengerPollInterval) {
+        clearInterval(messengerPollInterval);
+        messengerPollInterval = null;
+    }
+    // Close chat view on mobile
+    if (tab !== 'messenger') {
+        const chatView = document.getElementById('chat-view');
+        if (chatView) chatView.classList.remove('mobile-active');
+        currentChatUser = null;
+    }
     
     document.querySelectorAll('.nav-item').forEach(item => {
         item.classList.remove('active');
@@ -396,7 +409,7 @@ function switchTab(tab) {
     if (tab === 'leaderboard') loadLeaderboard();
     if (tab === 'history') loadHistory();
     if (tab === 'admin') loadAdminData();
-    if (tab === 'feed') loadFeed();
+    if (tab === 'messenger') loadMessenger();
     if (tab === 'coinflip') loadCoinFlip();
 }
 
@@ -748,316 +761,276 @@ function containsBadWords(text) {
     return found;
 }
 
-// ==================== FEED / POSTS ====================
-let currentModalPostId = null;
+// ==================== MESSENGER ====================
+let currentChatUser = null;
+let messengerPollInterval = null;
 
-async function loadFeed() {
-    // Always reload from GitHub to get latest posts
+async function loadMessenger() {
+    if (!currentUser) return;
+    await loadConversations();
+    // Poll for new messages every 3 seconds
+    if (messengerPollInterval) clearInterval(messengerPollInterval);
+    messengerPollInterval = setInterval(loadConversations, 3000);
+}
+
+async function loadConversations() {
     const db = await reloadDB();
+    if (!db.messages) db.messages = [];
     
-    const posts = (db.posts || []).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    const feedEl = document.getElementById('posts-feed');
-    feedEl.innerHTML = '';
+    // Find all conversations for current user
+    const conversations = {};
+    db.messages.forEach(msg => {
+        if (msg.from === currentUser || msg.to === currentUser) {
+            const otherId = msg.from === currentUser ? msg.to : msg.from;
+            if (!conversations[otherId] || new Date(msg.createdAt) > new Date(conversations[otherId].lastMessage.createdAt)) {
+                conversations[otherId] = {
+                    userId: otherId,
+                    lastMessage: msg,
+                    unread: 0
+                };
+            }
+        }
+    });
     
-    if (posts.length === 0) {
-        feedEl.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 40px;">No posts yet. Be the first to post!</p>';
+    // Count unread
+    db.messages.forEach(msg => {
+        if (msg.to === currentUser && !msg.read) {
+            const otherId = msg.from;
+            if (conversations[otherId]) {
+                conversations[otherId].unread++;
+            }
+        }
+    });
+    
+    // Sort by most recent
+    const sorted = Object.values(conversations).sort((a, b) => 
+        new Date(b.lastMessage.createdAt) - new Date(a.lastMessage.createdAt)
+    );
+    
+    const listEl = document.getElementById('conversations-list');
+    
+    if (sorted.length === 0) {
+        listEl.innerHTML = `
+            <p style="color: var(--text-secondary); text-align: center; padding: 40px 20px; font-size: 14px;">
+                <i class="fas fa-inbox" style="font-size: 32px; display: block; margin-bottom: 12px; opacity: 0.5;"></i>
+                No conversations yet.<br>Tap + to start messaging!
+            </p>
+        `;
         return;
     }
     
-    posts.forEach(post => {
-        const author = db.users[post.authorId];
-        if (!author) return;
+    listEl.innerHTML = '';
+    sorted.forEach(conv => {
+        const user = db.users[conv.userId];
+        if (!user) return;
         
-        const commentCount = (db.comments || []).filter(c => c.postId === post.id).length;
-        const timeAgo = getTimeAgo(post.createdAt);
-        const adminTag = author.isAdmin ? '<span class="admin-tag" style="color: var(--warning); font-size: 11px; margin-left: 6px;">(admin)</span>' : '';
+        const isActive = currentChatUser === conv.userId;
+        const lastMsg = conv.lastMessage.from === currentUser ? 'You: ' : '';
+        const preview = lastMsg + (conv.lastMessage.content.length > 30 ? conv.lastMessage.content.substring(0, 30) + '...' : conv.lastMessage.content);
         
-        feedEl.innerHTML += `
-            <div class="post-card" onclick="openPost('${post.id}')">
-                <div class="post-header">
-                    <div class="post-avatar">${author.username[0].toUpperCase()}</div>
-                    <div class="post-author-info">
-                        <span class="post-author-name">${author.username}${adminTag}</span>
-                        <span class="post-time">${timeAgo}</span>
-                    </div>
+        listEl.innerHTML += `
+            <div class="conversation-item ${isActive ? 'active' : ''}" onclick="openChatWith('${conv.userId}')">
+                <div class="conversation-avatar">${user.username[0].toUpperCase()}</div>
+                <div class="conversation-info">
+                    <div class="conversation-name">${user.username}</div>
+                    <div class="conversation-preview">${escapeHtml(preview)}</div>
                 </div>
-                <div class="post-content">${escapeHtml(post.content)}</div>
-                <div class="post-stats">
-                    <span class="post-stat"><i class="fas fa-comment"></i> ${commentCount} comment${commentCount !== 1 ? 's' : ''}</span>
-                    <span class="post-stat"><i class="fas fa-donate"></i> Donate credits</span>
+                <div style="text-align: right;">
+                    <div class="conversation-time">${getTimeAgo(conv.lastMessage.createdAt)}</div>
+                    ${conv.unread > 0 ? `<div class="conversation-unread">${conv.unread}</div>` : ''}
                 </div>
             </div>
         `;
     });
 }
 
-async function createPost() {
-    if (!requireToken()) return;
-    
-    const content = document.getElementById('post-content').value.trim();
-    
-    if (!content) {
-        showToast('Please write something!', 'error');
+function startNewChat() {
+    const input = document.getElementById('new-chat-input');
+    input.style.display = input.style.display === 'none' ? 'flex' : 'none';
+    if (input.style.display !== 'none') {
+        document.getElementById('new-chat-username').value = '';
+        document.getElementById('new-chat-username').focus();
+    }
+}
+
+async function openChat() {
+    const username = document.getElementById('new-chat-username').value.trim();
+    if (!username) {
+        showToast('Enter a username!', 'error');
         return;
     }
+    
+    const db = await reloadDB();
+    let targetId = null;
+    
+    for (const id in db.users) {
+        if (db.users[id].username.toLowerCase() === username.toLowerCase()) {
+            targetId = id;
+            break;
+        }
+    }
+    
+    if (!targetId) {
+        showToast('User not found!', 'error');
+        return;
+    }
+    
+    if (targetId === currentUser) {
+        showToast("You can't message yourself!", 'error');
+        return;
+    }
+    
+    document.getElementById('new-chat-input').style.display = 'none';
+    openChatWith(targetId);
+}
+
+async function openChatWith(userId) {
+    currentChatUser = userId;
+    
+    // Update UI
+    document.getElementById('chat-empty').style.display = 'none';
+    document.getElementById('chat-active').style.display = 'flex';
+    
+    const db = await reloadDB();
+    const user = db.users[userId];
+    
+    document.getElementById('chat-username').textContent = user.username;
+    document.getElementById('chat-avatar').textContent = user.username[0].toUpperCase();
+    
+    // Load messages
+    await loadMessages();
+    
+    // Highlight in list
+    document.querySelectorAll('.conversation-item').forEach(item => item.classList.remove('active'));
+    
+    // Mobile: show chat view
+    document.getElementById('chat-view').classList.add('mobile-active');
+    
+    // Start polling for new messages
+    if (messengerPollInterval) clearInterval(messengerPollInterval);
+    messengerPollInterval = setInterval(async () => {
+        if (currentChatUser) await loadMessages();
+        await loadConversations();
+    }, 2000);
+}
+
+function closeChat() {
+    currentChatUser = null;
+    document.getElementById('chat-empty').style.display = 'flex';
+    document.getElementById('chat-active').style.display = 'none';
+    document.getElementById('chat-view').classList.remove('mobile-active');
+    
+    if (messengerPollInterval) {
+        clearInterval(messengerPollInterval);
+        messengerPollInterval = null;
+    }
+    loadConversations();
+}
+
+async function loadMessages() {
+    if (!currentChatUser) return;
+    
+    const db = await reloadDB();
+    if (!db.messages) db.messages = [];
+    
+    // Get messages between current user and chat user
+    const messages = db.messages.filter(msg => 
+        (msg.from === currentUser && msg.to === currentChatUser) ||
+        (msg.from === currentChatUser && msg.to === currentUser)
+    ).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    
+    // Mark messages as read
+    let needsSave = false;
+    messages.forEach(msg => {
+        if (msg.to === currentUser && !msg.read) {
+            msg.read = true;
+            needsSave = true;
+        }
+    });
+    
+    if (needsSave) {
+        await saveDB(db);
+    }
+    
+    const container = document.getElementById('messages-container');
+    const wasAtBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 50;
+    
+    container.innerHTML = '';
+    
+    if (messages.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; color: var(--text-secondary); padding: 40px; font-size: 14px;">
+                <p>No messages yet. Say hello!</p>
+            </div>
+        `;
+        return;
+    }
+    
+    messages.forEach(msg => {
+        const isSent = msg.from === currentUser;
+        const time = getTimeAgo(msg.createdAt);
+        
+        container.innerHTML += `
+            <div class="message ${isSent ? 'sent' : 'received'}">
+                <div>${escapeHtml(msg.content)}</div>
+                <div class="message-time">${time}</div>
+            </div>
+        `;
+    });
+    
+    // Auto scroll to bottom
+    if (wasAtBottom) {
+        container.scrollTop = container.scrollHeight;
+    }
+}
+
+async function sendMessage() {
+    if (!currentChatUser) return;
+    
+    const input = document.getElementById('message-input');
+    const content = input.value.trim();
+    
+    if (!content) return;
     
     if (content.length > 500) {
-        showToast('Post too long! Max 500 characters.', 'error');
+        showToast('Message too long! Max 500 characters.', 'error');
         return;
     }
     
-    // Bad word check
-    const badFound = containsBadWords(content);
-    if (badFound.length > 0) {
-        const proceed = confirm(`⚠️ Warning: Your post may contain inappropriate language (${badFound.join(', ')}).\n\nDo you still want to post it?`);
-        if (!proceed) return;
-    }
-    
-    const token = getGithubToken();
-    
-    try {
-        // Get fresh database
-        const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${DB_FILE}`, {
-            headers: { 'Accept': 'application/vnd.github.v3+json' }
-        });
-        
-        if (!response.ok) {
-            showToast('Failed to load database!', 'error');
-            return;
-        }
-        
-        const data = await response.json();
-        const content2 = decodeURIComponent(escape(atob(data.content)));
-        const db = JSON.parse(content2);
-        
-        if (!db.posts) db.posts = [];
-        
-        const newPost = {
-            id: 'post_' + Date.now(),
-            authorId: currentUser,
-            content: content,
-            createdAt: new Date().toISOString()
-        };
-        
-        db.posts.push(newPost);
-        
-        // Save back
-        const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(db, null, 2))));
-        const saveResponse = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${DB_FILE}`, {
-            method: 'PUT',
-            headers: {
-                'Authorization': `token ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                message: 'New post',
-                content: encoded,
-                sha: data.sha
-            })
-        });
-        
-        if (saveResponse.ok) {
-            dbCache = db;
-            document.getElementById('post-content').value = '';
-            showToast('Post created!', 'success');
-            await loadFeed();
-        } else {
-            const err = await saveResponse.json();
-            console.error('Save failed:', err);
-            showToast('Failed to save post! ' + (saveResponse.status === 401 ? 'Token expired.' : ''), 'error');
-        }
-    } catch (error) {
-        console.error('Post error:', error);
-        showToast('Error creating post!', 'error');
-    }
-}
-
-function openPost(postId) {
-    currentModalPostId = postId;
-    
-    // Hide all sections
-    document.getElementById('comment-input-section').style.display = 'none';
-    document.getElementById('comments-section').style.display = 'none';
-    document.getElementById('donate-input-section').style.display = 'none';
-    
-    // Show modal
-    document.getElementById('post-modal').style.display = 'flex';
-    
-    loadPostModal();
-}
-
-async function loadPostModal() {
-    const db = await getDB();
-    const post = (db.posts || []).find(p => p.id === currentModalPostId);
-    
-    if (!post) {
-        closePostModal();
-        return;
-    }
-    
-    const author = db.users[post.authorId];
-    if (!author) {
-        closePostModal();
-        return;
-    }
-    
-    document.getElementById('modal-post-author').textContent = `Post by ${author.username}`;
-    document.getElementById('modal-post-content').textContent = post.content;
-    document.getElementById('modal-post-time').textContent = getTimeAgo(post.createdAt);
-}
-
-function closePostModal() {
-    document.getElementById('post-modal').style.display = 'none';
-    currentModalPostId = null;
-}
-
-function showCommentInput() {
-    document.getElementById('comment-input-section').style.display = 'block';
-    document.getElementById('comments-section').style.display = 'none';
-    document.getElementById('donate-input-section').style.display = 'none';
-    document.getElementById('comment-input').value = '';
-    document.getElementById('comment-input').focus();
-}
-
-async function submitComment() {
-    if (!requireToken()) return;
-    
-    const content = document.getElementById('comment-input').value.trim();
-    
-    if (!content) {
-        showToast('Please write a comment!', 'error');
-        return;
-    }
-    
-    // Reload from GitHub
     const db = await reloadDB();
+    if (!db.messages) db.messages = [];
     
-    if (!db.comments) db.comments = [];
-    
-    const newComment = {
-        id: 'comment_' + Date.now(),
-        postId: currentModalPostId,
-        authorId: currentUser,
+    const newMessage = {
+        id: 'msg_' + Date.now(),
+        from: currentUser,
+        to: currentChatUser,
         content: content,
+        read: false,
         createdAt: new Date().toISOString()
     };
     
-    db.comments.push(newComment);
+    db.messages.push(newMessage);
+    
+    // Limit to last 500 messages per conversation to keep database manageable
+    const userMessages = db.messages.filter(msg => 
+        (msg.from === currentUser && msg.to === currentChatUser) ||
+        (msg.from === currentChatUser && msg.to === currentUser)
+    );
+    if (userMessages.length > 500) {
+        const toRemove = userMessages.slice(0, userMessages.length - 500);
+        db.messages = db.messages.filter(msg => !toRemove.includes(msg));
+    }
     
     const saved = await saveDB(db);
-    if (!saved) {
-        showToast('Failed to save comment. Try again!', 'error');
-        return;
+    if (saved) {
+        input.value = '';
+        await loadMessages();
+    } else {
+        showToast('Failed to send message!', 'error');
     }
-    
-    document.getElementById('comment-input').value = '';
-    showToast('Comment posted!', 'success');
-    
-    // Refresh comments view
-    await viewComments();
 }
 
-async function viewComments() {
-    document.getElementById('comment-input-section').style.display = 'none';
-    document.getElementById('comments-section').style.display = 'block';
-    document.getElementById('donate-input-section').style.display = 'none';
-    
-    // Reload from GitHub
-    const db = await reloadDB();
-    const comments = (db.comments || [])
-        .filter(c => c.postId === currentModalPostId)
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    
-    const commentsList = document.getElementById('comments-list');
-    
-    if (comments.length === 0) {
-        commentsList.innerHTML = '<p class="no-comments">No comments yet. Be the first!</p>';
-        return;
-    }
-    
-    commentsList.innerHTML = '';
-    
-    comments.forEach(comment => {
-        const author = db.users[comment.authorId];
-        if (!author) return;
-        
-        commentsList.innerHTML += `
-            <div class="comment-item">
-                <div class="comment-avatar">${author.username[0].toUpperCase()}</div>
-                <div class="comment-body">
-                    <div class="comment-author">${author.username}</div>
-                    <div class="comment-text">${escapeHtml(comment.content)}</div>
-                    <div class="comment-time">${getTimeAgo(comment.createdAt)}</div>
-                </div>
-            </div>
-        `;
-    });
-}
-
-function showDonateInput() {
-    document.getElementById('comment-input-section').style.display = 'none';
-    document.getElementById('comments-section').style.display = 'none';
-    document.getElementById('donate-input-section').style.display = 'block';
-    document.getElementById('donate-amount').value = '';
-    document.getElementById('donate-amount').focus();
-}
-
-async function submitDonate() {
-    if (!requireToken()) return;
-    
-    const amount = parseInt(document.getElementById('donate-amount').value);
-    
-    if (!amount || amount <= 0) {
-        showToast('Enter a valid amount!', 'error');
-        return;
-    }
-    
-    // Reload from GitHub
-    const db = await reloadDB();
-    const post = (db.posts || []).find(p => p.id === currentModalPostId);
-    
-    if (!post) {
-        showToast('Post not found!', 'error');
-        return;
-    }
-    
-    const recipientId = post.authorId;
-    
-    if (recipientId === currentUser) {
-        showToast("You can't donate to yourself!", 'error');
-        return;
-    }
-    
-    if (userData.balance < amount) {
-        showToast('Insufficient balance!', 'error');
-        return;
-    }
-    
-    // Transfer credits
-    db.users[currentUser].balance -= amount;
-    db.users[currentUser].totalSent += amount;
-    db.users[recipientId].balance += amount;
-    db.users[recipientId].totalReceived += amount;
-    
-    const recipient = db.users[recipientId];
-    
-    db.transactions.push({
-        fromUserId: currentUser,
-        toUserId: recipientId,
-        amount: amount,
-        type: 'donate',
-        description: `Donation to ${recipient.username}'s post`,
-        createdAt: new Date().toISOString()
-    });
-    
-    await saveDB(db);
-    userData = db.users[currentUser];
-    
-    showToast(`Donated ${amount} credits to ${recipient.username}!`, 'success');
-    document.getElementById('donate-amount').value = '';
-    updateUI();
-}
-
+// ==================== HELPER FUNCTIONS ====================
 function getTimeAgo(dateString) {
     const now = new Date();
     const date = new Date(dateString);
