@@ -2034,3 +2034,186 @@ body {
         display: none;
     }
 }
+
+/* ==================== LIVE USER COUNT ==================== */
+.live-count {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px;
+    margin: 0 16px 12px;
+    background: var(--bg-card);
+    border-radius: 10px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+}
+
+.live-dot {
+    width: 8px;
+    height: 8px;
+    background: var(--success);
+    border-radius: 50%;
+    animation: livePulse 2s ease-in-out infinite;
+}
+
+@keyframes livePulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+    50% { opacity: 0.7; box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+}
+
+#online-count {
+    font-weight: 700;
+    color: var(--success);
+}
+
+/* ==================== REFER & EARN ==================== */
+.refer-card {
+    background: var(--bg-card);
+    border-radius: 16px;
+    padding: 40px 32px;
+    text-align: center;
+    border: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+}
+
+.refer-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, var(--primary), var(--purple), var(--success));
+}
+
+.refer-icon {
+    font-size: 64px;
+    margin-bottom: 16px;
+    animation: float 3s ease-in-out infinite;
+}
+
+.refer-link-box {
+    display: flex;
+    gap: 8px;
+    max-width: 400px;
+    margin: 24px auto 0;
+}
+
+.refer-link-box input {
+    flex: 1;
+    padding: 12px 16px;
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--primary-light);
+    font-size: 14px;
+    font-family: monospace;
+    cursor: pointer;
+}
+
+.refer-link-box input:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+.refer-stats {
+    display: flex;
+    justify-content: center;
+    gap: 40px;
+    margin-top: 32px;
+}
+
+.refer-stat {
+    text-align: center;
+}
+
+.refer-stat-number {
+    font-size: 32px;
+    font-weight: 800;
+    color: var(--primary-light);
+}
+
+.refer-stat-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+}
+
+.refer-share-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 24px;
+}
+
+.share-btn {
+    padding: 10px 20px;
+    border-radius: 10px;
+    border: none;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s;
+}
+
+.share-btn:hover {
+    transform: translateY(-2px);
+}
+
+.share-twitter {
+    background: #1DA1F2;
+    color: white;
+}
+
+.share-discord {
+    background: #5865F2;
+    color: white;
+}
+
+.share-whatsapp {
+    background: #25D366;
+    color: white;
+}
+
+.refer-history-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.refer-history-item:last-child {
+    border-bottom: none;
+}
+
+.refer-history-user {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.refer-history-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--bg-hover);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--primary-light);
+}
+
+.refer-history-reward {
+    color: var(--success);
+    font-weight: 700;
+    font-size: 14px;
+}
