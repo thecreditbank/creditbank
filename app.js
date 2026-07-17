@@ -1757,3 +1757,12 @@ function validatePasswordInput() {
     document.getElementById('req-number').className = /[0-9]/.test(password) ? 'valid' : '';
     document.getElementById('req-special').className = /[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]/.test(password) ? 'valid' : '';
 }
+
+// ==================== PWA SERVICE WORKER ====================
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+            .then(reg => console.log('Service Worker registered:', reg.scope))
+            .catch(err => console.log('Service Worker failed:', err));
+    });
+}
