@@ -11,8 +11,8 @@
 <body>
     <!-- Login/Register Screen -->
     <div id="auth-screen" class="screen active">
-        <!-- Step 1: Token Setup (shown first) -->
-        <div id="step-token" class="auth-container" style="max-width: 520px;">
+        <!-- Step 1: Token Setup (hidden - no longer needed) -->
+        <div id="step-token" class="auth-container" style="max-width: 520px; display: none;">
             <div class="auth-logo">
                 <i class="fas fa-university"></i>
                 <h1>CreditBank</h1>
@@ -81,8 +81,8 @@
             </div>
         </div>
         
-        <!-- Step 2: Login/Register (shown after token is saved) -->
-        <div id="step-login" class="auth-container" style="display: none;">
+        <!-- Step 2: Login/Register (shown by default) -->
+        <div id="step-login" class="auth-container">
             <div class="auth-logo">
                 <i class="fas fa-university"></i>
                 <h1>CreditBank</h1>
