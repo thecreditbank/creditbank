@@ -34,6 +34,7 @@ async function getDB() {
             if (!dbCache.dailyRewards) dbCache.dailyRewards = [];
             if (!dbCache.coinflip) dbCache.coinflip = { queue: [], active: {} };
             if (!dbCache.messages) dbCache.messages = [];
+            if (!dbCache.heartbeats) dbCache.heartbeats = {};
             return dbCache;
         }
     } catch (error) {
@@ -307,6 +308,16 @@ async function handleRegister(e) {
     currentUser = userId;
     userData = db.users[userId];
     localStorage.setItem('creditbank_user_id', currentUser);
+    
+    // Process referral if URL has ref code
+    await processReferral(userId);
+    
+    // Reload user data after referral bonus
+    const freshDb = await reloadDB();
+    if (freshDb.users[userId]) {
+        userData = freshDb.users[userId];
+    }
+    
     showDashboard();
 }
 
@@ -340,6 +351,12 @@ async function showDashboard() {
         userData = db.users[currentUser];
     }
     
+    // Ensure user has a referral code
+    if (userData && !userData.referralCode) {
+        userData.referralCode = generateReferralCode(currentUser);
+        await saveDB(db);
+    }
+    
     // Reset admin visibility before updateUI
     const adminOnlyNav = document.querySelector('.nav-item.admin-only');
     const adminSendNotice = document.getElementById('admin-send-notice');
@@ -350,7 +367,9 @@ async function showDashboard() {
     await loadFriends();
     await loadLeaderboard();
     await loadHistory();
-    await loadFeed();
+    
+    // Start online count
+    startOnlineCount();
 }
 
 function updateUI() {
@@ -411,6 +430,7 @@ function switchTab(tab) {
     if (tab === 'admin') loadAdminData();
     if (tab === 'messenger') loadMessenger();
     if (tab === 'coinflip') loadCoinFlip();
+    if (tab === 'refer') loadReferTab();
 }
 
 // ==================== SEND CREDITS ====================
@@ -1028,6 +1048,187 @@ async function sendMessage() {
     } else {
         showToast('Failed to send message!', 'error');
     }
+}
+
+// ==================== REFER & EARN ====================
+const REFERRAL_CREDITS = 200;
+
+function generateReferralCode(userId) {
+    // Generate a short code from user ID
+    return 'CB' + userId.replace('user_', '').substring(0, 6).toUpperCase();
+}
+
+function getReferralLink() {
+    if (!currentUser) return '';
+    const code = userData?.referralCode || generateReferralCode(currentUser);
+    const baseUrl = window.location.origin + window.location.pathname;
+    return `${baseUrl}?ref=${code}`;
+}
+
+function loadReferTab() {
+    if (!currentUser || !userData) return;
+    
+    // Set referral link
+    const code = userData.referralCode || generateReferralCode(currentUser);
+    document.getElementById('refer-link').value = getReferralLink();
+    
+    // Count referrals
+    const db = getDB();
+    const referrals = Object.values(db.users || {}).filter(u => u.referredBy === currentUser);
+    document.getElementById('refer-count').textContent = referrals.length;
+    document.getElementById('refer-earned').textContent = formatNumber(referrals.length * REFERRAL_CREDITS);
+    
+    // Show referral history
+    const historyEl = document.getElementById('refer-history');
+    if (referrals.length === 0) {
+        historyEl.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 20px;">No referrals yet. Share your link!</p>';
+    } else {
+        historyEl.innerHTML = '';
+        referrals.forEach(user => {
+            historyEl.innerHTML += `
+                <div class="refer-history-item">
+                    <div class="refer-history-user">
+                        <div class="refer-history-avatar">${user.username[0].toUpperCase()}</div>
+                        <div>
+                            <div style="font-weight: 600;">${user.username}</div>
+                            <div style="font-size: 12px; color: var(--text-secondary);">Joined ${getTimeAgo(user.createdAt)}</div>
+                        </div>
+                    </div>
+                    <div class="refer-history-reward">+${REFERRAL_CREDITS} credits</div>
+                </div>
+            `;
+        });
+    }
+}
+
+async function processReferral(newUserId) {
+    // Check URL for referral code
+    const params = new URLSearchParams(window.location.search);
+    const refCode = params.get('ref');
+    if (!refCode) return;
+    
+    const db = await getDB();
+    
+    // Find the referrer by code
+    let referrerId = null;
+    for (const id in db.users) {
+        const userCode = db.users[id].referralCode || generateReferralCode(id);
+        if (userCode === refCode) {
+            referrerId = id;
+            break;
+        }
+    }
+    
+    if (!referrerId || referrerId === newUserId) return;
+    
+    // Set referral on new user
+    db.users[newUserId].referredBy = referrerId;
+    
+    // Ensure referrer has a referral code
+    if (!db.users[referrerId].referralCode) {
+        db.users[referrerId].referralCode = generateReferralCode(referrerId);
+    }
+    
+    // Give referrer 200 credits
+    db.users[referrerId].balance += REFERRAL_CREDITS;
+    db.users[referrerId].totalEarned += REFERRAL_CREDITS;
+    
+    // Record transaction
+    if (!db.transactions) db.transactions = [];
+    db.transactions.push({
+        fromUserId: 'system',
+        toUserId: referrerId,
+        amount: REFERRAL_CREDITS,
+        type: 'referral',
+        description: `Referral bonus for inviting ${db.users[newUserId].username}`,
+        createdAt: new Date().toISOString()
+    });
+    
+    await saveDB(db);
+    
+    // Give new user their bonus too
+    db.users[newUserId].balance += REFERRAL_CREDITS;
+    db.users[newUserId].totalEarned += REFERRAL_CREDITS;
+    db.transactions.push({
+        fromUserId: 'system',
+        toUserId: newUserId,
+        amount: REFERRAL_CREDITS,
+        type: 'referral',
+        description: `Welcome bonus from referral!`,
+        createdAt: new Date().toISOString()
+    });
+    
+    await saveDB(db);
+    
+    // Clear the URL param
+    window.history.replaceState({}, '', window.location.pathname);
+}
+
+function copyReferLink() {
+    const input = document.getElementById('refer-link');
+    input.select();
+    document.execCommand('copy');
+    showToast('Link copied! Share it with friends!', 'success');
+}
+
+function shareRefer(platform) {
+    const link = getReferralLink();
+    const text = "Join CreditBank - a virtual banking game where you can earn credits, play coin flip, and message friends! Use my link for 200 free credits:";
+    
+    let url;
+    switch (platform) {
+        case 'twitter':
+            url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(link)}`;
+            break;
+        case 'discord':
+            // Copy to clipboard for Discord
+            navigator.clipboard.writeText(`${text}\n${link}`);
+            showToast('Copied! Paste it in Discord!', 'success');
+            return;
+        case 'whatsapp':
+            url = `https://wa.me/?text=${encodeURIComponent(text + '\n' + link)}`;
+            break;
+    }
+    
+    if (url) window.open(url, '_blank');
+}
+
+// ==================== LIVE USER COUNT ====================
+let onlinePollInterval = null;
+
+function updateOnlineCount() {
+    if (!currentUser) return;
+    
+    const db = getDB();
+    const now = Date.now();
+    const TWO_MINUTES = 2 * 60 * 1000;
+    
+    // A user is "online" if they've been active in the last 2 minutes
+    // We use a heartbeat stored in the database
+    if (!db.heartbeats) db.heartbeats = {};
+    
+    // Set current user heartbeat
+    db.heartbeats[currentUser] = now;
+    
+    // Clean old heartbeats
+    for (const id in db.heartbeats) {
+        if (now - db.heartbeats[id] > TWO_MINUTES) {
+            delete db.heartbeats[id];
+        }
+    }
+    
+    // Count online users
+    const onlineCount = Object.keys(db.heartbeats).length;
+    document.getElementById('online-count').textContent = onlineCount;
+    
+    // Save heartbeat (fire and forget - don't block UI)
+    saveDB(db).catch(() => {});
+}
+
+function startOnlineCount() {
+    updateOnlineCount();
+    if (onlinePollInterval) clearInterval(onlinePollInterval);
+    onlinePollInterval = setInterval(updateOnlineCount, 30000); // Update every 30s
 }
 
 // ==================== HELPER FUNCTIONS ====================
